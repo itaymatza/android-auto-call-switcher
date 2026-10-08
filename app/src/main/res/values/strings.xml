@@ -25,9 +25,9 @@
     <string name="last_call_none">No completed routing session has been recorded yet.</string>
     <string name="last_call_summary">%1$s\nResult: %2$s\nController: %3$s / %4$s\nBest evidence: %5$s</string>
     <string name="last_call_hfp_confirmed">Target HFP audio confirmed at call start; check speaker and microphone in the car</string>
-    <string name="last_call_unstable">Target HFP audio became unconfirmed after initial confirmation</string>
+    <string name="last_call_unstable">Target HFP audio takeover observed after initial confirmation</string>
     <string name="last_call_failed">Routing failed</string>
-    <string name="last_call_incomplete">Target HFP audio not confirmed</string>
+    <string name="last_call_incomplete">Audio observation incomplete; check diagnostics</string>
     <string name="automation_title">Automatic routing</string>
     <string name="master">Route eligible calls automatically</string>
     <string name="master_help_locked">Complete the required setup steps below to enable automation.</string>

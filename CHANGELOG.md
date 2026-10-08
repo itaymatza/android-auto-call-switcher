@@ -6,6 +6,7 @@
 - Require fresh, distinct HFP samples for target-audio confirmation and preserve pending sampling deadlines across callback bursts.
 - Recheck initial disconnected projection within the existing pre-action evidence window; retain suspension after a submitted request.
 - Separate current audio evidence from historical confirmation, classify late watchdog observations as incomplete, and allow teardown grace before marking a corroborated takeover unstable.
+- Align log analysis and last-call labels with explicit incomplete observation and corroborated takeover results.
 - Expose selector recovery configuration and current eligibility in diagnostics. The one-target-request budget and Samsung Phone ownership remain unchanged.
 
 
