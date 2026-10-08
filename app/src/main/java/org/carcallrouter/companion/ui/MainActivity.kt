@@ -119,6 +119,18 @@ class MainActivity : Activity() {
         }
         button(R.id.battery_settings) { showBatterySettingsGuide() }
         button(R.id.export) { exportLog() }
+        button(R.id.report_wrong_audio) {
+            val controller = SessionBridge.controller?.get()
+            if (controller != null) {
+                controller.reportWrongAudio()
+            } else {
+                RouterLog.event(
+                    "USER_AUDIO_REPORT",
+                    "observation=wrong_audio; serviceBound=false; applies_to=recent_call; physical_audio_verified=false",
+                )
+            }
+            toast("Audio problem marked in the diagnostic log")
+        }
         button(R.id.view_releases) { openUrl(R.string.releases_url) }
         button(R.id.view_source) { openUrl(R.string.project_url) }
         button(R.id.report_issue) { openUrl(R.string.issues_url) }

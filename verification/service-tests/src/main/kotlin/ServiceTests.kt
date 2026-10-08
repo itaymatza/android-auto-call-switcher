@@ -41,6 +41,7 @@ private fun reset() {
     Context.prefs = MemoryPrefs()
     Access.authorization = true
     Access.runtime = true
+    Access.queryDelayMs = 0L
     RouterLog.events.clear()
     ProjectionMonitor.instances.clear()
     ProjectionMonitor.current = true
@@ -1167,6 +1168,67 @@ fun main(args: Array<String>) {
                 check(adapter.current()?.identifier == TARGET_ID)
                 adapter.updateAvailable(listOf(competing))
                 check(adapter.current() == null)
+            },
+            "wrong_audio_report_does_not_route_or_start_an_orphan_session" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(750)
+                    val requests = f.service.issuedRequests.size
+                    f.service.reportWrongAudio()
+                    f.flush()
+                    check(f.service.issuedRequests.size == requests)
+                    check(RouterLog.events.any { it.first == "ROUTING_TRACE" && "event=USER_AUDIO_REPORT" in it.second })
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.flush()
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    val starts = RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=SESSION_STARTED" in it.second }
+                    f.service.reportWrongAudio()
+                    f.flush()
+                    check(RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=SESSION_STARTED" in it.second } == starts)
+                }
+            },
+            "authorization_stall_is_attributed_separately_from_timer_deadline" to {
+                Fixture().use { f ->
+                    f.activateWithoutSettling()
+                    Access.queryDelayMs = 24_400
+                    f.service.reportWrongAudio()
+                    f.flush()
+                    Access.queryDelayMs = 0
+                    check(
+                        RouterLog.events.any {
+                            it.first == "ROUTING_TRACE" &&
+                                "event=OPERATION_FINISHED" in it.second &&
+                                "operation=authorization" in it.second &&
+                                "duration_ms=24400" in it.second
+                        },
+                    )
+                    check(
+                        RouterLog.events.any {
+                            it.first == "ROUTING_TRACE" && "event=EVALUATION_TIMING" in it.second && "duration_ms=24400" in it.second
+                        },
+                    )
+                    countEquals(f, 0)
+                }
+            },
+            "projection_provider_evidence_and_single_failure_incident_are_exported" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    TestQueue.advanceTo(4_500)
+                    check(
+                        RouterLog.events.any {
+                            it.first == "ROUTING_TRACE" &&
+                                "event=EVIDENCE_SNAPSHOT" in it.second &&
+                                "projection_status=CONNECTED" in it.second &&
+                                "projection_raw_state=2" in it.second
+                        },
+                    )
+                    val incidents = RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=DIAGNOSTIC_INCIDENT" in it.second }
+                    check(incidents == 1)
+                    f.endpoints(listOf(target, competing, other))
+                    check(RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=DIAGNOSTIC_INCIDENT" in it.second } == incidents)
+                }
             },
         )
 

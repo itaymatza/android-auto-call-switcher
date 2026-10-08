@@ -12,6 +12,11 @@
 
 ## Unreleased
 
+- Record projection provider values/status, query generations, triggers and observation age alongside routing evidence.
+- Add audio/HFP query quality and per-operation timing, safety/evaluation timing, and timer dispatch delay distinct from logical deadline overrun.
+- Add an observational wrong-audio marker and incident records; analyzer reports user failures, unfinished operations and accepted requests lacking HFP confirmation.
+- Add optional bounded, private system-service snapshots and a research-to-evidence map. Raw system captures are separate from the redacted app export.
+
 ## 0.3.0-beta.11
 
 - Replace the callback-fighting startup guard with a bounded transaction: wait 500 ms after ACTIVE,

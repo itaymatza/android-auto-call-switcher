@@ -150,7 +150,7 @@ sign-in, downloads as a ZIP, and expires.
 4. Select **Set up one-time ADB authorization** and follow the displayed steps.
 5. Return to the app and tap **Verify**. Continue only after the status says authorization is detected.
 
-See the exact [authorization and troubleshooting guide](docs/AUTHORIZATION.md), [configuration guidance](docs/CONFIGURATION.md), [research decision](docs/PLATFORM-RESEARCH.md), and [parked-car test procedure](docs/TESTING.md).
+See the exact [authorization and troubleshooting guide](docs/AUTHORIZATION.md), [configuration guidance](docs/CONFIGURATION.md), [research decision](docs/PLATFORM-RESEARCH.md), [diagnostic evidence and system captures](docs/DIAGNOSTIC-EVIDENCE.md), and [parked-car test procedure](docs/TESTING.md).
 
 For repeatable in-place beta upgrades, configure the protected signed build described in
 [stable beta signing](docs/SIGNING.md). Ordinary GitHub debug artifacts do not have a stable

@@ -24,6 +24,16 @@ class HfpMonitor(
     val known get() = started && sampledKnown
     val connected get() = if (started) sampledDevices else emptySet()
     val audioConnected get() = if (started) sampledAudioDevices else emptySet()
+
+    fun diagnosticFields(): Array<Pair<String, Any?>> =
+        arrayOf(
+            "hfp_sample_quality" to if (known) "OBSERVED" else "UNKNOWN",
+            "hfp_query_trigger" to "test",
+            "hfp_query_ms" to queryDelayMs,
+            "hfp_proxy_ready" to started,
+            "hfp_negative_is_ambiguous" to true,
+        )
+
     var sampledAt: Long? = null
         private set
     var sampleSequence = 0L

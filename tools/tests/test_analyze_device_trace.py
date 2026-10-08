@@ -26,6 +26,44 @@ class TraceAnalyzerTest(unittest.TestCase):
         events, warnings = trace.parse_lines(io.StringIO(content))
         return trace.summarize(events), warnings
 
+    def test_slow_operation_and_unknown_evidence_are_explained(self):
+        content = (
+            line("abc", 1, 0, "SESSION_STARTED")
+            + line("abc", 2, 0, "OPERATION_STARTED", "operation=authorization")
+            + line("abc", 3, 24400, "OPERATION_FINISHED", "operation=authorization duration_ms=24400")
+            + line("abc", 4, 24400, "EVALUATION_TIMING", "duration_ms=24400 queue_delay_ms=15")
+            + line("abc", 5, 24401, "TIMER_FIRED", "late_ms=24600 dispatch_late_ms=24100")
+            + line("abc", 6, 24402, "EVIDENCE_SNAPSHOT", "audio_quality=STALE projection_status=ERROR")
+            + line("abc", 7, 24403, "REQUEST_ACCEPTED")
+            + line("abc", 8, 24404, "OPERATION_STARTED", "operation=call_safety")
+        )
+        summaries, warnings = self.parse(content)
+        self.assertEqual([], warnings)
+        item = summaries[0]
+        self.assertEqual("OPEN", item.status)
+        self.assertEqual({"authorization": 24400}, item.operation_max_ms)
+        self.assertEqual(["call_safety"], item.unfinished_operations)
+        self.assertEqual(24400, item.max_evaluation_ms)
+        self.assertEqual(15, item.max_evaluation_queue_ms)
+        self.assertEqual(24100, item.max_timer_dispatch_late_ms)
+        self.assertEqual(1, item.audio_unknown_snapshots)
+        self.assertEqual("ERROR", item.final_projection_status)
+        self.assertTrue(item.accepted_without_hfp_confirmation)
+
+    def test_user_observation_prevents_platform_confirmation_being_called_pass(self):
+        content = (
+            line("abc", 1, 0, "SESSION_STARTED")
+            + line("abc", 2, 500, "TARGET_HFP_AUDIO_CONFIRMED")
+            + line("abc", 3, 1000, "USER_AUDIO_REPORT", "observation=wrong_audio")
+            + line("abc", 4, 1001, "DIAGNOSTIC_INCIDENT", "trigger=user_report")
+            + line("abc", 5, 2000, "SESSION_FINISHED", "phase=RELEASED best_confirmation=TARGET_HFP_AUDIO")
+        )
+        summaries, _ = self.parse(content)
+        self.assertEqual("USER_REPORTED_FAILURE", summaries[0].status)
+        self.assertTrue(summaries[0].hfp_audio_confirmed)
+        self.assertEqual(1, summaries[0].user_audio_reports)
+        self.assertEqual(1, summaries[0].diagnostic_incidents)
+
     def test_dual_confirmation_finished_session_passes(self):
         content = (
             line("abc", 1, 0, "SESSION_STARTED", "mode=manual trigger=route_now")
