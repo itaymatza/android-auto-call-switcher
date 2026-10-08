@@ -25,26 +25,15 @@ This pre-release makes the current Car Call Router beta installable as a direct 
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.12
+## What changed in beta.14
 
-- Call-start routing now uses a short quiet period that extends when Telecom reports another
-  endpoint request or route change, capped at 900 ms after the call becomes active. With no
-  competing activity, the BMW request can start after 300 ms instead of a fixed 500 ms.
-- HFP audio is sampled every 250 ms during verification. Telecom's callback wait is reduced to
-  1.5 seconds while the full four-second audio evidence window remains available for slow SCO.
-- If another service requests an endpoint after the BMW request, the router still observes BMW
-  audio but will not issue a selector recovery request that could fight that service.
-- The latest source build re-queries HFP audio during the bounded verification window, including
-  at its deadline, so a missing Bluetooth broadcast cannot make a stale audio reading the final
-  verdict. Diagnostics record the sample age, trigger, and redacted audio-device alias.
-- Technical status now separates Telecom's displayed endpoint from observed HFP audio and marks
-  BMW confirmed only when the target's audio has passed the stability check.
-- Replaces callback-fighting behavior with one bounded BMW request verified by exact, stable
-  HFP/SCO ownership rather than the endpoint displayed by the Phone UI.
-- Restores Samsung's manual BMW selector once when Telecom displays BMW but the configured Android
-  Auto endpoint still owns call audio, without retrying BMW or guessing an endpoint.
-- Adds complete privacy-conscious routing evidence, selector-recovery diagnostics, and capture
-  analysis so the next parked run can distinguish Telecom display from actual audio ownership.
-- Stops selector recovery when speaker, handset, wired, or another Bluetooth route appears and
-  adds deterministic, randomized, JDK 17/21, coverage, and merge-queue regressions.
-- Includes the selector-recovery hardening merged on September 26, 2026. Remains a debug beta pending parked real-car qualification.
+- Starts one bounded BMW routing transaction during outgoing dialing, then rechecks fresh
+  audio evidence at answer without replacing a pending request or fighting manual selections.
+- Samples HFP ownership throughout the call, including after a failed startup request.
+- Records observed call duration and call/dialing/answer-relative event timing, late service
+  binding, observation gaps and audio loss. Request acceptance alone does not count as success.
+- Maps research questions to exported evidence, adds Bluetooth power and microphone-mute
+  diagnostics, and labels unavailable settings and unknown external request origins.
+- Adds deterministic tests for answer takeover, delayed callbacks, absent BMW audio,
+  manual overrides and incomplete observation. Physical microphone/speaker behavior and
+  seamless Samsung/Android Auto handover still require controlled real-device testing.
