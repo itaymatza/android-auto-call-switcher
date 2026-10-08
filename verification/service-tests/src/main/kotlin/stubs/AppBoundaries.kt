@@ -54,6 +54,10 @@ class ProjectionMonitor(
         instances.add(this)
     }
 
+    fun requestRefresh() {
+        changed(current)
+    }
+
     fun start() {
         changed(current)
     }

@@ -45,6 +45,7 @@ private fun reset() {
     ProjectionMonitor.instances.clear()
     ProjectionMonitor.current = true
     HfpMonitor.instances.clear()
+    HfpMonitor.queryDelayMs = 0L
     HfpMonitor.isKnown = true
     HfpMonitor.devices = setOf(TARGET, COMPETING, OTHER)
     HfpMonitor.audioDevices = setOf(COMPETING)
@@ -135,6 +136,69 @@ private fun countEquals(
 fun main(args: Array<String>) {
     val tests =
         listOf<Pair<String, () -> Unit>>(
+            "initial_projection_false_is_rechecked_before_first_request" to {
+                Fixture(projected = false).use { f ->
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    ProjectionMonitor.emit(true)
+                    f.flush()
+                    TestQueue.advanceTo(TestQueue.now + 500)
+                    countEquals(f, 1)
+                }
+            },
+            "delayed_hfp_query_does_not_confirm_stale_audio" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    HfpMonitor.queryDelayMs = 2_000
+                    HfpMonitor.audioDevices = setOf(TARGET)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    repeat(10) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    check(!SessionBridge.status.contains("reason=TARGET_AUDIO_CONFIRMED"))
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("HFP audio: UNKNOWN"))
+                }
+            },
+            "late_post_confirmation_timer_marks_incomplete_observation" to {
+                Fixture(initialEndpoint = target).use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    HfpMonitor.audioDevices = emptySet()
+                    AudioFrameworkProbe.mode = "NORMAL"
+                    TestQueue.advanceTo(26_000)
+                    check(RouterLog.events.any { "reason=observation_gap" in it.second })
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    val last = checkNotNull(RouterSettings(f.service).lastSession)
+                    check(last.result == RouterSettings.Result.INCOMPLETE)
+                    check(last.confirmation == "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE")
+                    countEquals(f, 1)
+                }
+            },
+            "teardown_sco_loss_is_not_reported_as_instability" to {
+                Fixture(initialEndpoint = target).use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    HfpMonitor.audioDevices = emptySet()
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    TestQueue.advanceTo(850)
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterSettings(f.service).lastSession?.result != RouterSettings.Result.UNSTABLE)
+                    countEquals(f, 1)
+                }
+            },
+            "selector_recovery_missing_configuration_is_visible" to {
+                Fixture(initialEndpoint = target).use { f ->
+                    RouterSettings(f.service).setCompetitor(null, null)
+                    f.activateAndSettle()
+                    check(SessionBridge.status.contains("competing device not configured"))
+                    countEquals(f, 1)
+                }
+            },
             "call_is_passive_until_active_and_settled" to {
                 Fixture().use { f ->
                     countEquals(f, 0)
@@ -1046,6 +1110,20 @@ fun main(args: Array<String>) {
                     check(last.reason == "TARGET_AUDIO_CONFIRMED")
                     check(last.confirmation == "TARGET_HFP_AUDIO")
                     check(last.result == RouterSettings.Result.HFP_CONFIRMED)
+                }
+            },
+            "unknown_audio_during_watch_is_incomplete" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(750)
+                    HfpMonitor.isKnown = false
+                    HfpMonitor.instances.last().refresh()
+                    f.flush()
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.INCOMPLETE)
+                    countEquals(f, 1)
                 }
             },
             "normal_disconnect_retains_confirmed_last_call_result" to {

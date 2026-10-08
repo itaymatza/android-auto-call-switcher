@@ -57,7 +57,7 @@ the [compatibility guide](docs/DEVICE-COMPATIBILITY.md) and [FAQ](docs/FAQ.md) b
 
 ## Project status
 
-The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.12` replaces callback fighting with a one-shot BMW request verified by actual HFP/SCO ownership, restores Samsung's manual selector only for the exact captured split state, and records complete redacted evidence for the next parked test; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
+The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.13` keeps the one-shot BMW request, moves HFP queries off the service thread, requires distinct fresh SCO observations for confirmation, and distinguishes delayed observations from a corroborated audio takeover. It also rechecks projection before the first action and shows when selector recovery is available; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
 
 
 ## Public-repository posture
@@ -81,13 +81,13 @@ The source namespace is the generic value `org.carcallrouter.companion`. Overrid
 ```sh
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
-  -PAPP_VERSION_CODE=14 \
-  -PAPP_VERSION_NAME=0.3.0-beta.12 \
+  -PAPP_VERSION_CODE=15 \
+  -PAPP_VERSION_NAME=0.3.0-beta.13 \
   :app:assembleDebug
 ```
 
 
-`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `14`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.12`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
+`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `15`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.13`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
 
 
 ### Runtime configuration
@@ -113,7 +113,7 @@ account is not required just to download the APK.
 
 | Version | Channel | Downloads |
 | --- | --- | --- |
-| `0.3.0-beta.12` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/car-call-router/releases) |
+| `0.3.0-beta.13` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/car-call-router/releases) |
 | `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.10-debug) |
 | `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.9-debug) |
 | `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.7-debug) |
@@ -126,7 +126,7 @@ A new debug APK is published for each successful push to `main` on the [Releases
 
 The easiest path is the durable direct download:
 
-1. Open [GitHub Releases](https://github.com/itaymatza/car-call-router/releases) and download the `.apk` from the newest `0.3.0-beta.12` debug pre-release.
+1. Open [GitHub Releases](https://github.com/itaymatza/car-call-router/releases) and download the `.apk` from the newest `0.3.0-beta.13` debug pre-release.
 2. Open the downloaded APK on the Android device.
 3. If Android prompts you, temporarily allow **Install unknown apps** for the browser or file
    manager, install the APK, and then disable that permission again.

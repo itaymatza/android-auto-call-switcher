@@ -13,6 +13,11 @@ import android.os.Looper
 import android.os.SystemClock
 import org.carcallrouter.companion.Access
 import org.carcallrouter.companion.RouterLog
+import org.carcallrouter.companion.core.SingleFlightQuery
+import java.util.concurrent.Executor
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 @SuppressLint("MissingPermission")
 class HfpMonitor(
@@ -20,6 +25,42 @@ class HfpMonitor(
     private val changed: () -> Unit,
 ) : AutoCloseable {
     private val handler = Handler(Looper.getMainLooper())
+
+    private data class Sample(
+        val connected: Set<String>,
+        val audio: Set<String>,
+        val started: Long,
+    )
+
+    private val query =
+        SingleFlightQuery<Sample>(
+            worker = worker,
+            owner = Executor { handler.post(it) },
+            clock = SystemClock::elapsedRealtime,
+        ) { result, queuedAt, startedAt ->
+            val now = SystemClock.elapsedRealtime()
+            val sample = result.getOrNull()
+            // A query which itself stalled is not fresh evidence, even if it just returned.
+            known = sample != null && now - sample.started <= MAX_SAMPLE_AGE_MS
+            connected = if (known) requireNotNull(sample).connected else emptySet()
+            audioConnected = if (known) requireNotNull(sample).audio else emptySet()
+            sampledAt = sample?.started
+            sampleSequence++
+            RouterLog.event(
+                "HFP_QUERY_TIMING",
+                "queueMs=${startedAt - queuedAt}; elapsedMs=${now - startedAt}; known=$known; sample=$sampleSequence",
+            )
+            result.exceptionOrNull()?.let { RouterLog.event("HFP_QUERY_ERROR", it.javaClass.simpleName) }
+            val stateKey = "$known|${connected.sorted()}|${audioConnected.sorted()}"
+            if (stateKey != lastLoggedState) {
+                lastLoggedState = stateKey
+                RouterLog.event(
+                    "HFP_STATE",
+                    "known=$known; connected=${connected.map(RouterLog::deviceId)}; sco=${audioConnected.map(RouterLog::deviceId)}",
+                )
+            }
+            changed()
+        }
     private val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
     private var headset: BluetoothHeadset? = null
     private var closed = false
@@ -55,6 +96,11 @@ class HfpMonitor(
                     if (closed) {
                         runCatching { adapter?.closeProfileProxy(profile, proxy) }
                     } else if (profile == BluetoothProfile.HEADSET) {
+                        query.invalidate()
+                        known = false
+                        sampledAt = null
+                        connected = emptySet()
+                        audioConnected = emptySet()
                         headset = proxy as? BluetoothHeadset
                         refresh("proxy_connected")
                     }
@@ -64,6 +110,7 @@ class HfpMonitor(
             override fun onServiceDisconnected(profile: Int) {
                 handler.post {
                     if (!closed && profile == BluetoothProfile.HEADSET) {
+                        query.invalidate()
                         headset = null
                         known = false
                         connected = emptySet()
@@ -96,66 +143,46 @@ class HfpMonitor(
         }
     }
 
-    /** A verification timer can sample without scheduling a second service evaluation. */
-    fun refresh(
-        trigger: String = "unspecified",
-        notify: Boolean = true,
-    ) {
+    /** Queries run off the owner thread. Every accepted completion schedules evaluation. */
+    fun refresh(trigger: String = "unspecified") {
         if (closed) return
-        val startedElapsed = SystemClock.elapsedRealtime()
-        val startedUptime = SystemClock.uptimeMillis()
-        var devicesQueryMs = 0L
-        var audioQueryMs = 0L
-        var deviceCount = 0
-        try {
-            val proxy = headset
-            if (proxy == null || !Access.bluetoothGranted(context)) {
-                known = false
-                connected = emptySet()
-                audioConnected = emptySet()
-            } else {
-                val devicesStarted = SystemClock.elapsedRealtime()
-                val devices = proxy.connectedDevices
-                devicesQueryMs = SystemClock.elapsedRealtime() - devicesStarted
-                deviceCount = devices.size
-                known = true
-                connected = devices.map { it.address.uppercase() }.toSet()
-                val audioStarted = SystemClock.elapsedRealtime()
-                audioConnected = devices.filter { proxy.isAudioConnected(it) }.map { it.address.uppercase() }.toSet()
-                audioQueryMs = SystemClock.elapsedRealtime() - audioStarted
-            }
-        } catch (e: RuntimeException) {
+        val proxy = headset
+        if (proxy == null || !Access.bluetoothGranted(context)) {
             known = false
             connected = emptySet()
             audioConnected = emptySet()
-            RouterLog.event("HFP_QUERY_ERROR", e.javaClass.simpleName)
+            sampledAt = null
+            changed()
+            return
         }
-        val elapsedDelta = SystemClock.elapsedRealtime() - startedElapsed
-        val uptimeDelta = SystemClock.uptimeMillis() - startedUptime
-        sampledAt = SystemClock.elapsedRealtime()
-        sampleSequence++
-        RouterLog.event(
-            "HFP_QUERY_TIMING",
-            "elapsedMs=$elapsedDelta; uptimeMs=$uptimeDelta; sleepDeltaMs=${(elapsedDelta - uptimeDelta).coerceAtLeast(0)}; " +
-                "devicesMs=$devicesQueryMs; audioMs=$audioQueryMs; deviceCount=$deviceCount; known=$known; " +
-                "trigger=$trigger; sample=$sampleSequence",
-        )
-        val stateKey = "$known|${connected.sorted()}|${audioConnected.sorted()}"
-        if (stateKey != lastLoggedState) {
-            lastLoggedState = stateKey
-            RouterLog.event(
-                "HFP_STATE",
-                "known=$known; connected=${connected.map(RouterLog::deviceId)}; sco=${audioConnected.map(RouterLog::deviceId)}",
-            )
+        query.submit {
+            val started = SystemClock.elapsedRealtime()
+            RouterLog.event("HFP_QUERY_STARTED", "trigger=$trigger")
+            val devices = proxy.connectedDevices
+            val connected = devices.map { it.address.uppercase() }.toSet()
+            val audio = devices.filter { proxy.isAudioConnected(it) }.map { it.address.uppercase() }.toSet()
+            val ended = SystemClock.elapsedRealtime()
+            RouterLog.event("HFP_QUERY_COMPLETED", "elapsedMs=${ended - started}; deviceCount=${devices.size}")
+            Sample(connected, audio, started)
         }
-        if (notify) changed()
     }
 
     override fun close() {
         closed = true
+        query.close()
         if (registered) runCatching { context.unregisterReceiver(receiver) }
         registered = false
         headset?.let { runCatching { adapter?.closeProfileProxy(BluetoothProfile.HEADSET, it) } }
         headset = null
+    }
+
+    companion object {
+        // Process-wide, zero-queue worker: a stuck Binder cannot leak replacement
+        // threads or collect jobs from later calls/monitor instances.
+        private val worker =
+            ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>(), { task ->
+                Thread(task, "router-hfp-query").apply { isDaemon = true }
+            })
+        const val MAX_SAMPLE_AGE_MS = 750L
     }
 }

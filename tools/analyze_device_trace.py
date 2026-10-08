@@ -215,6 +215,16 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             event.event == "POLICY_STATE" and event.fields.get("phase") == "FAILED"
             for event in session_events
         ) or (finish is not None and finish.fields.get("phase") == "FAILED")
+        # Beta.13 records corroborated takeover separately from raw negative/unknown
+        # samples. Teardown or stale evidence must not turn historical confirmation
+        # into a physical-audio failure. Keep legacy exports' existing interpretation.
+        explicit_observation = finish is not None and "observation_incomplete" in finish.fields
+        observation_incomplete = explicit_observation and finish.fields.get("observation_incomplete") == "true"
+        unstable = (
+            loss_recorded_at_finish or loss_recorded_by_watch
+            if explicit_observation
+            else route_oscillations > 0 or audio_confirmation_losses > 0
+        )
         if anomalies:
             status = "INVALID"
         elif finish is None:
@@ -223,8 +233,10 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             # A confirmation records that target audio was observed once, not that the
             # call ultimately succeeded. Keep a later terminal policy failure visible.
             status = "FAIL"
-        elif hfp is not None and (route_oscillations > 0 or audio_confirmation_losses > 0):
+        elif hfp is not None and unstable:
             status = "UNSTABLE"
+        elif observation_incomplete:
+            status = "INCOMPLETE"
         elif hfp is not None:
             status = "PASS"
         elif endpoint is not None:

@@ -2,7 +2,7 @@
 
 ## Current classification
 
-`0.3.0-beta.12` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
+`0.3.0-beta.13` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
 
 ## Completed engineering gates
 

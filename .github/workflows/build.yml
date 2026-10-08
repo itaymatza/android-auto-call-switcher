@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 env:
-  BASE_VERSION_CODE: '14'
-  BASE_VERSION_NAME: 0.3.0-beta.12
+  BASE_VERSION_CODE: '15'
+  BASE_VERSION_NAME: 0.3.0-beta.13
 
 jobs:
   host-contract:
@@ -86,7 +86,7 @@ jobs:
       - name: Verify APK signature and manifest identity
         env:
           REPORT_FILE: verification/current/apk-verification.txt
-        run: bash tools/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk org.carcallrouter.companion 14 0.3.0-beta.12 34 36 true
+        run: bash tools/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk org.carcallrouter.companion 15 0.3.0-beta.13 34 36 true
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -113,10 +113,10 @@ jobs:
             -storepass "$BETA_KEYSTORE_PASSWORD" -alias "$BETA_KEY_ALIAS" \
             | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -n 1)"
           bash gradlew :app:assembleDebug -PENABLE_BETA_SIGNING=true \
-            -PAPP_VERSION_NAME=0.3.0-beta.12.ci --stacktrace --console=plain
+            -PAPP_VERSION_NAME=0.3.0-beta.13.ci --stacktrace --console=plain
           EXPECTED_CERT_SHA256="$expected_cert" bash tools/verify-apk.sh \
             app/build/outputs/apk/debug/app-debug.apk \
-            org.carcallrouter.companion 14 0.3.0-beta.12.ci 34 36 true
+            org.carcallrouter.companion 15 0.3.0-beta.13.ci 34 36 true
 
   publish-debug:
     name: Publish verified debug beta

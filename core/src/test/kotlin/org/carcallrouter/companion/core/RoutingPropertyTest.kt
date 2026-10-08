@@ -47,6 +47,7 @@ class RoutingPropertyTest {
                         projection = evidence(),
                         targetHfpConnected = evidence(),
                         targetHfpAudio = evidence(),
+                        targetHfpSampleAt = now,
                         selectorRecoveryAvailable = evidence(),
                         targetAvailable = evidence(),
                         endpointRevision = trace.toLong() + 1,

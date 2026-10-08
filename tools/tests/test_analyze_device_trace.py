@@ -42,6 +42,28 @@ class TraceAnalyzerTest(unittest.TestCase):
         self.assertEqual(50, summaries[0].endpoint_latency_ms)
         self.assertEqual(80, summaries[0].hfp_latency_ms)
 
+    def test_explicit_observation_result_separates_gap_teardown_and_takeover(self):
+        prefix = (
+            line("abc", 1, 0, "SESSION_STARTED", "mode=automatic trigger=fresh_active_transition")
+            + line("abc", 2, 500, "TARGET_HFP_AUDIO_CONFIRMED")
+            + line("abc", 3, 26000, "CONFIRMED_AUDIO_CHANGED", "target_sco=false")
+        )
+        for incomplete, loss, expected in [
+            ("true", "false", "INCOMPLETE"),
+            ("false", "false", "PASS"),
+            ("false", "true", "UNSTABLE"),
+            ("true", "true", "UNSTABLE"),
+        ]:
+            with self.subTest(incomplete=incomplete, loss=loss):
+                summaries, warnings = self.parse(prefix + line(
+                    "abc", 4, 26017, "SESSION_FINISHED",
+                    "phase=RELEASED observation_incomplete=" + incomplete
+                    + " post_confirmation_loss_observed=" + loss,
+                ))
+                self.assertEqual([], warnings)
+                self.assertEqual(expected, summaries[0].status)
+                self.assertEqual(1, summaries[0].audio_confirmation_losses)
+
     def test_endpoint_only_is_incomplete(self):
         content = (
             line("abc", 1, 0, "SESSION_STARTED", "mode=automatic trigger=fresh_active_transition")
