@@ -45,6 +45,16 @@ class SessionSummary:
     route_oscillations: int
     audio_confirmation_losses: int
     max_timer_late_ms: int
+    max_timer_dispatch_late_ms: int
+    max_evaluation_ms: int
+    max_evaluation_queue_ms: int
+    operation_max_ms: dict[str, int]
+    unfinished_operations: list[str]
+    audio_unknown_snapshots: int
+    final_projection_status: str
+    user_audio_reports: int
+    diagnostic_incidents: int
+    accepted_without_hfp_confirmation: bool
     endpoint_confirmed: bool
     endpoint_latency_ms: int | None
     hfp_audio_confirmed: bool
@@ -211,6 +221,24 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             if event.event == "TIMER_FIRED"
             and event.fields.get("late_ms", "").isdigit()
         ]
+        def maximum(name: str, field: str) -> int:
+            return max((
+                int(event.fields[field]) for event in session_events
+                if event.event == name and event.fields.get(field, "").isdigit()
+            ), default=0)
+
+        operation_max_ms: dict[str, int] = {}
+        pending_operations: set[str] = set()
+        for event in session_events:
+            operation = event.fields.get("operation", "unknown")
+            if event.event == "OPERATION_STARTED":
+                pending_operations.add(operation)
+            elif event.event == "OPERATION_FINISHED":
+                pending_operations.discard(operation)
+                elapsed = event.fields.get("duration_ms", "")
+                if elapsed.isdigit():
+                    operation_max_ms[operation] = max(operation_max_ms.get(operation, 0), int(elapsed))
+        user_audio_reports = sum(event.event == "USER_AUDIO_REPORT" for event in session_events)
         explicit_failure = any(
             event.event == "POLICY_STATE" and event.fields.get("phase") == "FAILED"
             for event in session_events
@@ -229,6 +257,9 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             status = "INVALID"
         elif finish is None:
             status = "OPEN"
+        elif user_audio_reports:
+            # Keep the user's physical observation visible even when platform signals agree.
+            status = "USER_REPORTED_FAILURE"
         elif explicit_failure:
             # A confirmation records that target audio was observed once, not that the
             # call ultimately succeeded. Keep a later terminal policy failure visible.
@@ -264,6 +295,22 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             route_oscillations=route_oscillations,
             audio_confirmation_losses=audio_confirmation_losses,
             max_timer_late_ms=max(timer_lateness, default=0),
+            max_timer_dispatch_late_ms=maximum("TIMER_FIRED", "dispatch_late_ms"),
+            max_evaluation_ms=maximum("EVALUATION_TIMING", "duration_ms"),
+            max_evaluation_queue_ms=maximum("EVALUATION_TIMING", "queue_delay_ms"),
+            operation_max_ms=operation_max_ms,
+            unfinished_operations=sorted(pending_operations),
+            audio_unknown_snapshots=sum(
+                event.fields.get("audio_quality") in {"UNSAMPLED", "STALE", "ERROR", "UNAVAILABLE"}
+                for event in evidence_events
+            ),
+            final_projection_status=(evidence_events[-1].fields.get("projection_status", "unknown")
+                                     if evidence_events else "unknown"),
+            user_audio_reports=user_audio_reports,
+            diagnostic_incidents=sum(event.event == "DIAGNOSTIC_INCIDENT" for event in session_events),
+            accepted_without_hfp_confirmation=hfp is None and any(
+                event.event == "REQUEST_ACCEPTED" for event in session_events
+            ),
             endpoint_confirmed=endpoint is not None,
             endpoint_latency_ms=endpoint.elapsed_ms if endpoint else None,
             hfp_audio_confirmed=hfp is not None,
@@ -317,6 +364,14 @@ def render_text(summaries: list[SessionSummary], warnings: list[str], out: TextI
               f"max timer lateness: {item.max_timer_late_ms} ms", file=out)
         print(f"  Telecom endpoint: {'confirmed' if item.endpoint_confirmed else 'not confirmed'}"
               + (f" at {item.endpoint_latency_ms} ms" if item.endpoint_latency_ms is not None else ""), file=out)
+        print(f"  timing: dispatch lateness={item.max_timer_dispatch_late_ms} ms; "
+              f"evaluation={item.max_evaluation_ms} ms; queue={item.max_evaluation_queue_ms} ms", file=out)
+        print(f"  operation maxima (ms): {json.dumps(item.operation_max_ms, sort_keys=True)}; "
+              f"unfinished={','.join(item.unfinished_operations) or 'none'}", file=out)
+        print(f"  observations: projection={item.final_projection_status}; "
+              f"audio unknown snapshots={item.audio_unknown_snapshots}; "
+              f"user reports={item.user_audio_reports}; incidents={item.diagnostic_incidents}; "
+              f"accepted without HFP confirmation={item.accepted_without_hfp_confirmation}", file=out)
         print(f"  target HFP audio: {'confirmed' if item.hfp_audio_confirmed else 'not confirmed'}"
               + (f" at {item.hfp_latency_ms} ms" if item.hfp_latency_ms is not None else ""), file=out)
         print(

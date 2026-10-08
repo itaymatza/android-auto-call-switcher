@@ -85,6 +85,7 @@
     <string name="refresh">Refresh status</string>
     <string name="logs_title">Recent diagnostic events</string>
     <string name="export">Export redacted log</string>
+    <string name="report_wrong_audio">Mark wrong call audio</string>
     <string name="privacy">Private by design: no internet, audio recording, contacts, or call-log access.</string>
     <string name="about_title">About and support</string>
     <string name="about_summary">Open-source Android utility for choosing the Bluetooth hands-free endpoint used by eligible calls. Android Auto remains connected for navigation and media.</string>

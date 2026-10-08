@@ -20,6 +20,10 @@ internal class AudioFrameworkProbe(
     data class State(
         val mode: String,
         val communicationDevice: String,
+        val quality: String = "UNSAMPLED",
+        val sampledAt: Long? = null,
+        val queryMs: Long? = null,
+        val failedOperation: String? = null,
     )
 
     private val manager = context.getSystemService(AudioManager::class.java)
@@ -31,18 +35,34 @@ internal class AudioFrameworkProbe(
         SingleFlightQuery<State>(worker, Executor { handler.post(it) }, SystemClock::elapsedRealtime) { result, queuedAt, startedAt ->
             val now = SystemClock.elapsedRealtime()
             sampledAt = startedAt
-            cached = if (now - startedAt <= 750) result.getOrDefault(State("UNKNOWN", "UNKNOWN")) else State("UNKNOWN", "UNKNOWN")
-            RouterLog.event("AUDIO_QUERY_COMPLETED", "queueMs=${startedAt - queuedAt}; elapsedMs=${now - startedAt}; mode=${cached.mode}")
+            cached =
+                if (now - startedAt <= 750) {
+                    result.getOrDefault(State("UNKNOWN", "UNKNOWN", "ERROR", startedAt))
+                } else {
+                    State("UNKNOWN", "UNKNOWN", "STALE", startedAt, now - startedAt)
+                }
+            RouterLog.event(
+                "AUDIO_QUERY_COMPLETED",
+                "queueMs=${startedAt - queuedAt}; elapsedMs=${now - startedAt}; mode=${cached.mode}; " +
+                    "device=${cached.communicationDevice}; quality=${cached.quality}; operation=${cached.failedOperation ?: "none"}",
+            )
         }
 
     fun sample(now: Long = SystemClock.elapsedRealtime()): State {
         if (sampledAt == Long.MIN_VALUE || now - sampledAt >= 250) {
             query.submit { readState() }
         }
-        return if (sampledAt != Long.MIN_VALUE && now - sampledAt in 0..750) cached else State("UNKNOWN", "UNKNOWN")
+        return if (sampledAt != Long.MIN_VALUE && now - sampledAt in 0..750) {
+            cached
+        } else {
+            cached.copy(mode = "UNKNOWN", communicationDevice = "UNKNOWN", quality = if (cached.sampledAt == null) "UNSAMPLED" else "STALE")
+        }
     }
 
     private fun readState(): State {
+        val startedAt = SystemClock.elapsedRealtime()
+        var operation = "mode"
+        var operationStartedAt = startedAt
         RouterLog.event("AUDIO_QUERY_STARTED", "operation=mode")
         return runCatching {
             val mode =
@@ -56,6 +76,12 @@ internal class AudioFrameworkProbe(
                         else -> "OTHER"
                     }
                 } ?: "UNKNOWN"
+            RouterLog.event(
+                "AUDIO_QUERY_STAGE_COMPLETED",
+                "operation=mode; elapsedMs=${SystemClock.elapsedRealtime() - operationStartedAt}",
+            )
+            operation = "communication_device"
+            operationStartedAt = SystemClock.elapsedRealtime()
             RouterLog.event("AUDIO_QUERY_STAGE", "operation=communication_device")
             val device =
                 manager?.communicationDevice?.type?.let { communicationType ->
@@ -68,8 +94,13 @@ internal class AudioFrameworkProbe(
                         else -> "OTHER"
                     }
                 } ?: "UNKNOWN"
-            State(mode, device)
-        }.getOrDefault(State("UNKNOWN", "UNKNOWN"))
+            val endedAt = SystemClock.elapsedRealtime()
+            RouterLog.event("AUDIO_QUERY_STAGE_COMPLETED", "operation=communication_device; elapsedMs=${endedAt - operationStartedAt}")
+            State(mode, device, if (manager == null) "UNAVAILABLE" else "OBSERVED", startedAt, endedAt - startedAt)
+        }.getOrElse {
+            RouterLog.event("AUDIO_QUERY_ERROR", "operation=$operation; type=${it.javaClass.simpleName}")
+            State("UNKNOWN", "UNKNOWN", "ERROR", startedAt, SystemClock.elapsedRealtime() - startedAt, operation)
+        }
     }
 
     override fun close() {

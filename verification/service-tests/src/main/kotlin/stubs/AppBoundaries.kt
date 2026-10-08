@@ -4,8 +4,13 @@ import android.content.Context
 object Access {
     var authorization = true
     var runtime = true
+    var queryDelayMs = 0L
 
-    fun ongoingCalls(c: Context) = authorization
+    fun ongoingCalls(c: Context): Boolean {
+        android.os.TestQueue.now += queryDelayMs
+        android.os.TestQueue.uptime += queryDelayMs
+        return authorization
+    }
 
     fun runtimeGranted(c: Context) = runtime
 }
@@ -57,6 +62,31 @@ class ProjectionMonitor(
     fun requestRefresh() {
         changed(current)
     }
+
+    fun diagnosticFields(now: Long = 0): Array<Pair<String, Any?>> =
+        arrayOf(
+            "projection_status" to
+                if (current == true) {
+                    "CONNECTED"
+                } else if (current == false) {
+                    "DISCONNECTED"
+                } else {
+                    "UNKNOWN"
+                },
+            "projection_raw_state" to
+                if (current == true) {
+                    2
+                } else if (current == false) {
+                    0
+                } else {
+                    null
+                },
+            "projection_generation" to 1,
+            "projection_query_pending" to false,
+            "projection_trigger" to "test",
+            "projection_sample_age_ms" to now,
+            "projection_query_ms" to 0,
+        )
 
     fun start() {
         changed(current)

@@ -8,6 +8,8 @@ object SessionBridge {
         fun routeNow()
 
         fun pauseSession()
+
+        fun reportWrongAudio()
     }
 
     var controller: WeakReference<Control>? = null

@@ -52,6 +52,7 @@ class RouterInCallService :
     private var manualSession = false
     private var hfpStarted = false
     private var lastTracePolicy: Pair<RoutingPolicy.Phase, RoutingPolicy.ReasonCode>? = null
+    private var previousPolicyForIncident: Pair<RoutingPolicy.Phase, RoutingPolicy.ReasonCode>? = null
     private var lastTraceEvidence: String? = null
     private var lastSafety = "No calls"
     private var manualCooldownUntil = 0L
@@ -61,6 +62,8 @@ class RouterInCallService :
     private var scheduledTickAt: Long? = null
     private var scheduledTickElapsed: Long? = null
     private var scheduledTickUptime: Long? = null
+    private var scheduledTickDelay: Long? = null
+    private var evaluationQueuedAt: Long? = null
     private var confirmedAudioPresent: Boolean? = null
     private var postConfirmationDeadlineAt: Long? = null
     private var postConfirmationWatchComplete = false
@@ -84,9 +87,11 @@ class RouterInCallService :
             val due = scheduledTickAt
             val scheduledElapsed = scheduledTickElapsed
             val scheduledUptime = scheduledTickUptime
+            val requestedDelay = scheduledTickDelay
             scheduledTickAt = null
             scheduledTickElapsed = null
             scheduledTickUptime = null
+            scheduledTickDelay = null
             if (due != null && scheduledElapsed != null && scheduledUptime != null) {
                 val elapsedNow = SystemClock.elapsedRealtime()
                 val elapsedDelta = elapsedNow - scheduledElapsed
@@ -98,6 +103,8 @@ class RouterInCallService :
                     "elapsed_delta_ms" to elapsedDelta,
                     "uptime_delta_ms" to uptimeDelta,
                     "sleep_delta_ms" to (elapsedDelta - uptimeDelta).coerceAtLeast(0),
+                    "requested_delay_ms" to requestedDelay,
+                    "dispatch_late_ms" to requestedDelay?.let { (uptimeDelta - it).coerceAtLeast(0) },
                 )
             }
             if (policy.phase == RoutingPolicy.Phase.RELEASED &&
@@ -165,6 +172,7 @@ class RouterInCallService :
         scheduledTickAt = null
         scheduledTickElapsed = null
         scheduledTickUptime = null
+        scheduledTickDelay = null
     }
 
     private fun scheduleTick(
@@ -177,6 +185,7 @@ class RouterInCallService :
         scheduledTickAt = due
         scheduledTickElapsed = elapsed
         scheduledTickUptime = uptime
+        scheduledTickDelay = delay
         val posted = handler.postDelayed(tick, delay)
         trace.event(
             "TIMER_SCHEDULED",
@@ -189,6 +198,7 @@ class RouterInCallService :
             scheduledTickAt = null
             scheduledTickElapsed = null
             scheduledTickUptime = null
+            scheduledTickDelay = null
         }
     }
 
@@ -219,6 +229,7 @@ class RouterInCallService :
         manualSession = false
         hfpStarted = false
         lastTracePolicy = null
+        previousPolicyForIncident = null
         lastTraceEvidence = null
         lastAudioFrameworkState = null
         projection = null
@@ -236,6 +247,8 @@ class RouterInCallService :
         scheduledTickAt = null
         scheduledTickElapsed = null
         scheduledTickUptime = null
+        scheduledTickDelay = null
+        evaluationQueuedAt = null
         trace =
             RoutingTrace(
                 now = SystemClock::elapsedRealtime,
@@ -646,6 +659,7 @@ class RouterInCallService :
 
     private fun queueEvaluation() {
         if (disposed) return
+        if (evaluationQueuedAt == null) evaluationQueuedAt = SystemClock.elapsedRealtime()
         handler.removeCallbacks(evaluateEvent)
         handler.post(evaluateEvent)
     }
@@ -657,7 +671,9 @@ class RouterInCallService :
         val starting = !trace.isActive()
         trace.begin(mode, trigger)
         if (starting) {
+            previousPolicyForIncident = null
             trace.event("SESSION_ENVIRONMENT", *ProcessDiagnostics.traceFields(this))
+            trace.event("PROJECTION_EVIDENCE", *projectionMonitor.diagnosticFields())
             lastTraceEvidence = null
             lastAudioFrameworkState = null
         }
@@ -719,15 +735,54 @@ class RouterInCallService :
 
     private fun evaluate() {
         if (disposed) return
+        val startedAt = SystemClock.elapsedRealtime()
+        val startedUptime = SystemClock.uptimeMillis()
+        val queuedAt = evaluationQueuedAt
+        evaluationQueuedAt = null
+        try {
+            evaluateState()
+        } finally {
+            trace.event(
+                "EVALUATION_TIMING",
+                "duration_ms" to (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0),
+                "uptime_ms" to (SystemClock.uptimeMillis() - startedUptime).coerceAtLeast(0),
+                "queue_delay_ms" to queuedAt?.let { (startedAt - it).coerceAtLeast(0) },
+            )
+        }
+    }
+
+    /** Entry/exit pairs expose the last pending Binder operation without logging its arguments. */
+    private inline fun <T> observeOperation(
+        operation: String,
+        block: () -> T,
+    ): T {
+        val startedAt = SystemClock.elapsedRealtime()
+        val startedUptime = SystemClock.uptimeMillis()
+        trace.event("OPERATION_STARTED", "operation" to operation)
+        var completed = false
+        try {
+            return block().also { completed = true }
+        } finally {
+            trace.event(
+                "OPERATION_FINISHED",
+                "operation" to operation,
+                "duration_ms" to (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0),
+                "uptime_ms" to (SystemClock.uptimeMillis() - startedUptime).coerceAtLeast(0),
+                "completed" to completed,
+            )
+        }
+    }
+
+    private fun evaluateState() {
         val previousTickAt = scheduledTickAt
         cancelTick("new_evaluation")
         val now = SystemClock.elapsedRealtime()
         val hfpFresh = hfp.sampledAt?.let { now - it in 0..RoutingPolicy.MAX_HFP_SAMPLE_AGE_MS } == true
-        val authorized = Access.ongoingCalls(this)
-        val runtimeGranted = Access.runtimeGranted(this)
+        val authorized = observeOperation("authorization") { Access.ongoingCalls(this) }
+        val runtimeGranted = observeOperation("runtime_permissions") { Access.runtimeGranted(this) }
         val live = liveCalls()
         val active = live.any { it.details.state == Call.STATE_ACTIVE }
-        val rejections = live.mapNotNull(classifier::rejection)
+        val rejections = observeOperation("call_safety") { live.mapNotNull(classifier::rejection) }
         val safe = runtimeGranted && live.isNotEmpty() && rejections.isEmpty()
         lastSafety =
             when {
@@ -766,6 +821,10 @@ class RouterInCallService :
                 "AUDIO_FRAMEWORK_STATE",
                 "mode" to audioState.mode,
                 "communication_device" to audioState.communicationDevice,
+                "quality" to audioState.quality,
+                "sample_age_ms" to audioState.sampledAt?.let { (now - it).coerceAtLeast(0) },
+                "query_ms" to audioState.queryMs,
+                "failed_operation" to audioState.failedOperation,
                 "diagnostic_only" to true,
             )
         }
@@ -910,14 +969,20 @@ class RouterInCallService :
                 "records" to records.size,
                 "safe_cellular" to safe,
                 "projection" to projection,
+                *projectionMonitor.diagnosticFields(now),
                 "hfp_monitoring" to hfpStarted,
                 "hfp_fresh" to hfpFresh,
                 "hfp_known" to hfp.known,
+                *hfp.diagnosticFields(),
                 "hfp_connected_count" to hfp.connected.size,
                 "hfp_audio_count" to hfp.audioConnected.size,
                 "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
                 "audio_mode" to audioState?.mode,
                 "communication_device" to audioState?.communicationDevice,
+                "audio_quality" to audioState?.quality,
+                "audio_sample_age_ms" to audioState?.sampledAt?.let { (now - it).coerceAtLeast(0) },
+                "audio_query_ms" to audioState?.queryMs,
+                "audio_failed_operation" to audioState?.failedOperation,
                 "hfp_sample" to hfp.sampleSequence,
                 "hfp_sample_age_ms" to hfp.sampledAt?.let { (now - it).coerceAtLeast(0) },
                 "hfp_audio_device" to hfp.audioConnected.singleOrNull()?.let(RouterLog::deviceId),
@@ -978,6 +1043,10 @@ class RouterInCallService :
                 else -> Unit
             }
         }
+        if (trace.isActive() && policy.phase == RoutingPolicy.Phase.FAILED && policyState != previousPolicyForIncident) {
+            trace.event("DIAGNOSTIC_INCIDENT", "trigger" to policy.reasonCode, "route" to route, "hfp_fresh" to hfpFresh)
+        }
+        previousPolicyForIncident = policyState
         if (decision.requestTarget && target.endpoint != null) {
             val attempt = requireNotNull(decision.requestAttempt)
             val targetId = RouterLog.deviceId(address)
@@ -1301,6 +1370,14 @@ class RouterInCallService :
         RouterLog.event("USER_PAUSE", "No further requests this session; an already-submitted request cannot be recalled")
         trace.event("SESSION_SUSPENDED", "reason" to policy.reasonCode)
         evaluate()
+    }
+
+    override fun reportWrongAudio() {
+        RouterLog.event("USER_AUDIO_REPORT", "observation=wrong_audio; serviceBound=true; physical_audio_verified=false")
+        trace.event("USER_AUDIO_REPORT", "observation" to "wrong_audio", "physical_audio_verified" to false)
+        // This is an observation, not a routing command or a new automatic session.
+        if (hfpStarted) hfp.refresh("user_audio_report")
+        queueEvaluation()
     }
 
     override fun onUnbind(intent: Intent): Boolean {

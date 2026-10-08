@@ -8,6 +8,10 @@ internal class AudioFrameworkProbe(
     data class State(
         val mode: String,
         val communicationDevice: String,
+        val quality: String = "OBSERVED",
+        val sampledAt: Long? = null,
+        val queryMs: Long? = null,
+        val failedOperation: String? = null,
     )
 
     fun sample(
