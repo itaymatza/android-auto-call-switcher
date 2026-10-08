@@ -10,6 +10,7 @@ class RoutingTrace(
     private val now: () -> Long,
     private val newSessionId: () -> String,
     private val emit: (String) -> Unit,
+    private val context: () -> Array<Pair<String, Any?>> = { emptyArray() },
 ) {
     enum class Confirmation { NONE, TELECOM_ENDPOINT, TARGET_HFP_AUDIO }
 
@@ -47,7 +48,7 @@ class RoutingTrace(
                 add("seq=${++sequence}")
                 add("elapsed_ms=$elapsed")
                 add("event=${token(name)}")
-                fields.forEach { (key, value) -> add("${token(key)}=${token(value?.toString() ?: "null")}") }
+                (context().toList() + fields).forEach { (key, value) -> add("${token(key)}=${token(value?.toString() ?: "null")}") }
             }.joinToString(" ")
         emit(body)
         eventCounts[name] = (eventCounts[name] ?: 0) + 1

@@ -95,6 +95,7 @@ object RouterLog {
                                 "Android ${android.os.Build.VERSION.RELEASE}; security patch ${android.os.Build.VERSION.SECURITY_PATCH}",
                         )
                         writer.appendLine("Device addresses are salted aliases. No phone numbers are recorded.")
+                        appendInvestigationGuide(writer, RouterSettings(context))
                         (MAX_ARCHIVES downTo 1).forEach { index ->
                             val archive = archive(index)
                             if (archive.exists()) writer.append(archive.readText())
@@ -106,6 +107,54 @@ object RouterLog {
                 }
             main.post { done(ok) }
         }
+    }
+
+    /** Export-time configuration is separate from the historical call-boundary snapshots. */
+    private fun appendInvestigationGuide(
+        writer: java.io.Writer,
+        settings: RouterSettings,
+    ) {
+        writer.append("\nDIAGNOSTIC_COVERAGE schema=2\n")
+        writer.append(
+            "Export-time configuration: enabled=${settings.enabled}; " +
+                "target=${deviceId(settings.targetAddress)}; competitor=${deviceId(settings.competitorAddress)}\n",
+        )
+        writer.append("These settings describe export time; use CALL_BOUNDARY_SNAPSHOT for call-time configuration.\n")
+        writer.append("Question: who owns audio before answer? Evidence: CALL_BOUNDARY_SNAPSHOT, HFP_STATE, AUDIO_DEVICE_INVENTORY.\n")
+        writer.append(
+            "Question: where is routing latency? Evidence: call-boundary elapsed times, ROUTE_REQUEST, HFP_QUERY_TIMING, ROUTING_TRACE.\n",
+        )
+        writer.append(
+            "Question: did answer change the route? Compare dialing and ACTIVE boundaries, endpoint revisions, HFP audio owners and request outcomes.\n",
+        )
+        writer.append(
+            "Question: did BMW lose audio later? Evidence: CONFIRMED_AUDIO_CHANGED and post-confirmation watch completion; unobserved intervals remain UNKNOWN.\n",
+        )
+        writer.append(
+            "Question: did a competing request replace ours? Evidence: route request outcomes and endpoint callbacks; external requester identity is UNKNOWN.\n",
+        )
+        writer.append(
+            "Question: are prerequisites missing? Evidence: ROUTING_TRACE permission, authorization, projection, configured device and endpoint resolution fields.\n",
+        )
+        writer.append(
+            "Question: did Bluetooth reconnect change ownership? Evidence: HFP query triggers and fresh connected/SCO aliases within the monitored interval.\n",
+        )
+        writer.append(
+            "Phone-calls/media profile toggles and stored connection policies: UNAVAILABLE_PUBLIC_API; disconnected does not prove disabled.\n",
+        )
+        writer.append("Persistent Bluetooth device priority/weight: UNAVAILABLE_PUBLIC_API.\n")
+        writer.append(
+            "Android Auto re-enabling a profile, head-unit model/settings, and original-car-Bluetooth mode: UNKNOWN; require device configuration evidence.\n",
+        )
+        writer.append(
+            "Physical microphone/speaker use and seamless audible handover: NOT_VERIFIED; inventories and successful requests alone are insufficient.\n",
+        )
+        writer.append(
+            "Observation limits: bounded asynchronous queries, stale/failed samples, service lifetime and log rotation can leave gaps.\n",
+        )
+        writer.append(
+            "Historical events follow in chronological archive order. Missing events are not proof that a transition did not occur.\n\n",
+        )
     }
 
     private fun rotateFiles() {

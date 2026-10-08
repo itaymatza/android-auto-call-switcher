@@ -34,7 +34,7 @@ sourceSets {
     main {
         kotlin {
             srcDir("src/main/kotlin")
-            srcDir(rootProject.file("app/src/main/java"))
+            srcDir(rootProject.file(providers.gradleProperty("SERVICE_APP_SOURCE_DIR").getOrElse("app/src/main/java")))
             include("ServiceTests.kt")
             include("stubs/**/*.kt")
             include("org/carcallrouter/companion/RouterSettings.kt")

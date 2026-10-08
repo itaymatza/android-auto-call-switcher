@@ -26,6 +26,26 @@ class TraceAnalyzerTest(unittest.TestCase):
         events, warnings = trace.parse_lines(io.StringIO(content))
         return trace.summarize(events), warnings
 
+    def test_call_relative_metrics_do_not_use_session_start_as_answer(self):
+        content = (
+            line("abc", 1, 0, "SESSION_STARTED", "trigger=call_added")
+            + line("abc", 2, 2000, "TARGET_HFP_AUDIO_CONFIRMED",
+                   "since_dialing_ms=1900 since_answer_ms=400")
+            + line("abc", 3, 12000, "CALL_DURATION_SUMMARY", "connected_duration_ms=10000")
+            + line("abc", 4, 12001, "SESSION_FINISHED", "max_observation_gap_ms=2100")
+        )
+        summaries, _ = self.parse(content)
+        self.assertEqual(2000, summaries[0].hfp_latency_ms)
+        self.assertEqual(400, summaries[0].answer_to_hfp_ms)
+        self.assertEqual(1900, summaries[0].dialing_to_hfp_ms)
+        self.assertEqual(10000, summaries[0].connected_duration_ms)
+        self.assertEqual(2100, summaries[0].max_observation_gap_ms)
+
+    def test_old_export_does_not_invent_call_relative_metrics(self):
+        summaries, _ = self.parse(line("abc", 1, 0, "SESSION_STARTED"))
+        self.assertIsNone(summaries[0].answer_to_hfp_ms)
+        self.assertIsNone(summaries[0].connected_duration_ms)
+
     def test_slow_operation_and_unknown_evidence_are_explained(self):
         content = (
             line("abc", 1, 0, "SESSION_STARTED")

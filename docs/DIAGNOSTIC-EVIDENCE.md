@@ -98,3 +98,21 @@ Primary contracts: [InCallService](https://developer.android.com/reference/andro
 [BluetoothHeadset](https://developer.android.com/reference/android/bluetooth/BluetoothHeadset),
 [AudioManager](https://developer.android.com/reference/android/media/AudioManager),
 [dumpsys](https://developer.android.com/tools/dumpsys).
+
+## Beta.14 call timeline and observation
+
+Every routing trace event includes the observed call ID/state, time since dialing
+and first ACTIVE, and connected duration. Late service binding is labeled. The
+CALL_DURATION_SUMMARY freezes connected duration at disconnect, not delayed removal.
+REQUEST_SUBMITTED includes DIALING/ANSWERED stage and the call request count.
+
+CALL_AUDIO_OBSERVATION is sampled every two seconds after startup; observation
+continues for failed transactions to expose later changes. SESSION_FINISHED records
+maximum gaps, final sample age, sampled-not-continuous mode, and a persistent user
+wrong-audio report. Service shutdown during a live call marks observation incomplete.
+No sample or callback identifies physical PCM or its microphone. API 37 source is
+UNKNOWN; SELF/EXTERNAL means matching our endpoint/time marker or not matching it,
+not a proven user action or service identity.
+
+The analyzer exports answer_to_hfp_ms, dialing_to_hfp_ms, connected_duration_ms and
+max_observation_gap_ms when available. Legacy exports keep these values unknown.

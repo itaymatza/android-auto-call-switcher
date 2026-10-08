@@ -2,7 +2,7 @@
 
 ## Current classification
 
-`0.3.0-beta.13` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
+`0.3.0-beta.14` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
 
 ## Completed engineering gates
 
@@ -69,4 +69,4 @@
 
 ## Stability rule
 
-Do not add retries merely to improve a success percentage. The target request is one-shot. The explicitly configured competing endpoint may receive a separate, single selector-recovery request only when it owns HFP audio and Telecom still displays the target after the verification window. Unknown evidence freezes routing; confirmed safety loss stops it; an alternative route that may be a user choice is never fought.
+Do not add retries merely to improve a success percentage. Each phase is one-shot; outgoing calls have a dialing phase and answer verification with at most two automatic target requests for the entire call. Incoming calls have one answer-time target request. The explicitly configured competing endpoint may receive a separate, single selector-recovery request only when it owns HFP audio and Telecom still displays the target after the verification window. Unknown evidence freezes routing; confirmed safety loss stops it; an alternative route that may be a user choice is never fought.
