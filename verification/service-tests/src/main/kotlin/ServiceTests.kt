@@ -1112,6 +1112,20 @@ fun main(args: Array<String>) {
                     check(last.result == RouterSettings.Result.HFP_CONFIRMED)
                 }
             },
+            "unknown_audio_during_watch_is_incomplete" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(750)
+                    HfpMonitor.isKnown = false
+                    HfpMonitor.instances.last().refresh()
+                    f.flush()
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.INCOMPLETE)
+                    countEquals(f, 1)
+                }
+            },
             "normal_disconnect_retains_confirmed_last_call_result" to {
                 Fixture().use { f ->
                     f.activateAndSettle()

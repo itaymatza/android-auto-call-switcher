@@ -881,6 +881,7 @@ class RouterInCallService :
                 )
             }
             confirmedAudioPresent = targetHfpAudio
+            if (postConfirmationDeadlineAt != null && targetHfpAudio == null) postConfirmationObservationIncomplete = true
             // A shutdown sample often precedes DISCONNECTED. Require two fresh negative
             // observations separated by a grace interval before calling audio unstable.
             if (targetHfpAudio == false && hfp.audioConnected.isNotEmpty() && audioState?.mode != "NORMAL") {
