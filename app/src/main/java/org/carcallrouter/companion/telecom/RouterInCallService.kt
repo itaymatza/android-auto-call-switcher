@@ -65,6 +65,9 @@ class RouterInCallService :
     private var postConfirmationDeadlineAt: Long? = null
     private var postConfirmationWatchComplete = false
     private var postConfirmationLossObserved = false
+    private var postConfirmationObservationIncomplete = false
+    private var suspectedAudioLossAt: Long? = null
+    private var suspectedAudioLossSampleAt: Long? = null
     private var lastHfpAudioDevices: Set<String>? = null
     private var lastAudioFrameworkState: AudioFrameworkProbe.State? = null
 
@@ -97,20 +100,29 @@ class RouterInCallService :
                     "sleep_delta_ms" to (elapsedDelta - uptimeDelta).coerceAtLeast(0),
                 )
             }
+            if (policy.phase == RoutingPolicy.Phase.RELEASED &&
+                postConfirmationDeadlineAt?.let { SystemClock.elapsedRealtime() > it + HFP_VERIFY_POLL_MS } == true
+            ) {
+                postConfirmationObservationIncomplete = true
+                finishPostConfirmationWatch("observation_gap")
+            }
+            if (!manualSession && policy.phase == RoutingPolicy.Phase.WAITING && projection != true) {
+                projectionMonitor.requestRefresh()
+            }
             val settling =
                 policy.phase == RoutingPolicy.Phase.WAITING &&
                     policy.reasonCode == RoutingPolicy.ReasonCode.SETTLING_AFTER_ACTIVE
             if (
                 hfpStarted &&
                 (
-                    settling ||
+                    policy.phase == RoutingPolicy.Phase.WAITING ||
                         policy.phase in setOf(RoutingPolicy.Phase.VERIFYING, RoutingPolicy.Phase.STABILIZING) ||
                         (policy.phase == RoutingPolicy.Phase.RELEASED && postConfirmationDeadlineAt != null)
                 )
             ) {
                 val previousSampleAt = hfp.sampledAt
                 val previousAudio = if (hfp.known) hfp.audioConnected else null
-                hfp.refresh(if (settling) "settling_timer" else "verification_timer", notify = false)
+                hfp.refresh(if (settling) "settling_timer" else "verification_timer")
                 if (settling && previousAudio != null && hfp.known && hfp.audioConnected != previousAudio) {
                     policy.observeStartupActivity(SystemClock.elapsedRealtime())
                     trace.event(
@@ -124,9 +136,9 @@ class RouterInCallService :
                 val address = settings.targetAddress?.uppercase()
                 trace.event(
                     when {
-                        settling -> "HFP_SETTLING_SAMPLE"
-                        policy.phase == RoutingPolicy.Phase.RELEASED -> "HFP_POST_CONFIRMATION_SAMPLE"
-                        else -> "HFP_VERIFICATION_SAMPLE"
+                        settling -> "HFP_SETTLING_SAMPLE_REQUESTED"
+                        policy.phase == RoutingPolicy.Phase.RELEASED -> "HFP_POST_CONFIRMATION_SAMPLE_REQUESTED"
+                        else -> "HFP_VERIFICATION_SAMPLE_REQUESTED"
                     },
                     "previous_sample_age_ms" to previousSampleAt?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0) },
                     "sample" to hfp.sampleSequence,
@@ -218,6 +230,9 @@ class RouterInCallService :
         postConfirmationDeadlineAt = null
         postConfirmationWatchComplete = false
         postConfirmationLossObserved = false
+        postConfirmationObservationIncomplete = false
+        suspectedAudioLossAt = null
+        suspectedAudioLossSampleAt = null
         scheduledTickAt = null
         scheduledTickElapsed = null
         scheduledTickUptime = null
@@ -455,12 +470,17 @@ class RouterInCallService :
                     "target_hfp_connected" to (address != null && hfp.known && address in hfp.connected),
                     "target_sco" to (address != null && hfp.known && address in hfp.audioConnected),
                     "post_confirmation_loss_observed" to postConfirmationLossObserved,
+                    "observation_incomplete" to postConfirmationObservationIncomplete,
                 )
             if (confirmation != null) {
                 settings.recordLastSession(
                     policy.phase.name,
                     policy.reasonCode.name,
-                    if (postConfirmationLossObserved) "TARGET_HFP_AUDIO_UNSTABLE" else confirmation.name,
+                    when {
+                        postConfirmationLossObserved -> "TARGET_HFP_AUDIO_UNSTABLE"
+                        postConfirmationObservationIncomplete -> "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE"
+                        else -> confirmation.name
+                    },
                 )
             }
             router.clearSession()
@@ -477,6 +497,9 @@ class RouterInCallService :
             confirmedAudioPresent = null
             postConfirmationWatchComplete = false
             postConfirmationLossObserved = false
+            postConfirmationObservationIncomplete = false
+            suspectedAudioLossAt = null
+            suspectedAudioLossSampleAt = null
             RouterLog.event("SESSION_END", "No audio reset, disconnect, A2DP or projection operation performed")
         }
         queueEvaluation()
@@ -696,14 +719,19 @@ class RouterInCallService :
 
     private fun evaluate() {
         if (disposed) return
+        val previousTickAt = scheduledTickAt
         cancelTick("new_evaluation")
+        val now = SystemClock.elapsedRealtime()
+        val hfpFresh = hfp.sampledAt?.let { now - it in 0..RoutingPolicy.MAX_HFP_SAMPLE_AGE_MS } == true
+        val authorized = Access.ongoingCalls(this)
+        val runtimeGranted = Access.runtimeGranted(this)
         val live = liveCalls()
         val active = live.any { it.details.state == Call.STATE_ACTIVE }
         val rejections = live.mapNotNull(classifier::rejection)
-        val safe = Access.runtimeGranted(this) && live.isNotEmpty() && rejections.isEmpty()
+        val safe = runtimeGranted && live.isNotEmpty() && rejections.isEmpty()
         lastSafety =
             when {
-                !Access.runtimeGranted(this) -> "Required runtime permissions not granted"
+                !runtimeGranted -> "Required runtime permissions not granted"
                 rejections.isNotEmpty() -> rejections.joinToString("; ")
                 live.isEmpty() -> "No live calls"
                 else -> "SIM-backed call and emergency-number checks passed"
@@ -712,7 +740,7 @@ class RouterInCallService :
         val hfpConnected =
             when {
                 address == null -> false
-                !hfp.known -> null
+                !hfp.known || !hfpFresh -> null
                 else -> address in hfp.connected
             }
         val target = targetEndpoint()
@@ -721,17 +749,16 @@ class RouterInCallService :
         val targetHfpAudio =
             when {
                 address == null -> false
-                !hfp.known -> null
+                !hfp.known || !hfpFresh -> null
                 else -> address in hfp.audioConnected
             }
         val competitorAddress = settings.competitorAddress?.uppercase()
         val selectorRecoveryAvailable =
             when {
                 competitorAddress == null -> false
-                !hfp.known -> null
+                !hfp.known || !hfpFresh -> null
                 else -> competitorAddress in hfp.audioConnected && competitor.endpoint != null
             }
-        val now = SystemClock.elapsedRealtime()
         val audioState = if (active) audioFramework.sample(now) else null
         if (audioState != null && audioState != lastAudioFrameworkState) {
             lastAudioFrameworkState = audioState
@@ -747,7 +774,7 @@ class RouterInCallService :
         if (lateBindDeadline != null && policy.phase == RoutingPolicy.Phase.IDLE) {
             val prerequisitesReady =
                 settings.enabled &&
-                    Access.ongoingCalls(this) &&
+                    authorized &&
                     active &&
                     live.size == 1 &&
                     records.size == 1 &&
@@ -766,7 +793,7 @@ class RouterInCallService :
                 isProtectedLateBindRoute(route)
             val immediatelyIneligible =
                 !settings.enabled ||
-                    !Access.ongoingCalls(this) ||
+                    !authorized ||
                     !active ||
                     live.size != 1 ||
                     records.size != 1 ||
@@ -824,13 +851,14 @@ class RouterInCallService :
                 RoutingPolicy.Snapshot(
                     now = now,
                     enabled = settings.enabled,
-                    authorized = Access.ongoingCalls(this),
+                    authorized = authorized,
                     active = active,
                     singleCall = live.size == 1 && records.size == 1,
                     safeCellularCall = safe,
                     projection = projection,
                     targetHfpConnected = hfpConnected,
                     targetHfpAudio = targetHfpAudio,
+                    targetHfpSampleAt = hfp.sampledAt,
                     selectorRecoveryAvailable = selectorRecoveryAvailable,
                     targetAvailable = endpointAvailable,
                     endpointRevision = router.endpointRevision(),
@@ -853,7 +881,19 @@ class RouterInCallService :
                 )
             }
             confirmedAudioPresent = targetHfpAudio
-            if (targetHfpAudio != true) postConfirmationLossObserved = true
+            // A shutdown sample often precedes DISCONNECTED. Require two fresh negative
+            // observations separated by a grace interval before calling audio unstable.
+            if (targetHfpAudio == false && hfp.audioConnected.isNotEmpty() && audioState?.mode != "NORMAL") {
+                val since =
+                    suspectedAudioLossAt ?: now.also {
+                        suspectedAudioLossAt = it
+                        suspectedAudioLossSampleAt = hfp.sampledAt
+                    }
+                if (hfpFresh && now - since >= 500 && hfp.sampledAt != suspectedAudioLossSampleAt) postConfirmationLossObserved = true
+            } else {
+                suspectedAudioLossAt = null
+                suspectedAudioLossSampleAt = null
+            }
             if (postConfirmationDeadlineAt?.let { now >= it } == true) {
                 finishPostConfirmationWatch("deadline")
             }
@@ -861,8 +901,8 @@ class RouterInCallService :
         val evidence =
             listOf<Pair<String, Any?>>(
                 "enabled" to settings.enabled,
-                "authorized" to Access.ongoingCalls(this),
-                "runtime_granted" to Access.runtimeGranted(this),
+                "authorized" to authorized,
+                "runtime_granted" to runtimeGranted,
                 "manual" to manualSession,
                 "active" to active,
                 "live_calls" to live.size,
@@ -870,6 +910,7 @@ class RouterInCallService :
                 "safe_cellular" to safe,
                 "projection" to projection,
                 "hfp_monitoring" to hfpStarted,
+                "hfp_fresh" to hfpFresh,
                 "hfp_known" to hfp.known,
                 "hfp_connected_count" to hfp.connected.size,
                 "hfp_audio_count" to hfp.audioConnected.size,
@@ -1155,12 +1196,34 @@ class RouterInCallService :
                     "HFP connected=${hfpConnected ?: "unknown"}; SCO=${targetHfpAudio ?: "unknown"}",
                 "Endpoint resolution: ${target.reason}",
                 "Telecom endpoint: $route",
-                "HFP audio: ${hfpAudioOwner(address, competitorAddress)}; BMW confirmed=${policy.verified && targetHfpAudio == true}",
+                "HFP audio: ${if (hfpFresh) {
+                    hfpAudioOwner(
+                        address,
+                        competitorAddress,
+                    )
+                } else {
+                    "UNKNOWN"
+                }}; BMW confirmed=${policy.verified && targetHfpAudio == true}",
+                "Selector recovery: ${when {
+                    competitorAddress == null -> "unavailable: competing device not configured"
+                    competitor.endpoint == null -> "unavailable: competing endpoint unresolved"
+                    !hfpFresh -> "waiting for fresh HFP evidence"
+                    selectorRecoveryAvailable == true -> "ready: competing device owns audio"
+                    else -> "not applicable to current audio owner"
+                }}",
                 "Audio framework: mode=${audioState?.mode ?: "unknown"}; " +
                     "device=${audioState?.communicationDevice ?: "unknown"} (diagnostic only)",
                 "Controller: ${policy.phase}; attempts=${policy.requests}; " +
                     "selectorRecoveries=${policy.selectorRecoveries}; reason=${policy.reasonCode}",
-                policy.reason,
+                if (policy.verified) {
+                    when (targetHfpAudio) {
+                        true -> "Target HFP audio observed now; automatic routing released"
+                        false -> "Target HFP audio is no longer observed; automatic routing remains released"
+                        null -> "Target HFP audio evidence is stale or unavailable; confirmed only at call start"
+                    }
+                } else {
+                    policy.reason
+                },
             ).joinToString("\n")
         if (state != lastPublished) {
             lastPublished = state
@@ -1170,17 +1233,16 @@ class RouterInCallService :
         if (policy.phase !in setOf(RoutingPolicy.Phase.SUSPENDED, RoutingPolicy.Phase.FAILED)) {
             decision.wakeAt?.let { deadline ->
                 val sampleHfp =
-                    policy.phase in setOf(RoutingPolicy.Phase.VERIFYING, RoutingPolicy.Phase.STABILIZING) ||
-                        (
-                            policy.phase == RoutingPolicy.Phase.WAITING &&
-                                policy.reasonCode == RoutingPolicy.ReasonCode.SETTLING_AFTER_ACTIVE
-                        )
-                val due = if (sampleHfp && hfpStarted) minOf(deadline, now + HFP_VERIFY_POLL_MS) else deadline
+                    policy.phase in setOf(RoutingPolicy.Phase.WAITING, RoutingPolicy.Phase.VERIFYING, RoutingPolicy.Phase.STABILIZING)
+                val sampleProjection = !manualSession && policy.phase == RoutingPolicy.Phase.WAITING && projection != true
+                val desired = if ((sampleHfp && hfpStarted) || sampleProjection) minOf(deadline, now + HFP_VERIFY_POLL_MS) else deadline
+                val due = minOf(desired, previousTickAt?.takeIf { it > now } ?: desired)
                 scheduleTick(due, if (due < deadline) "HFP_SAMPLE_POLL" else policy.reasonCode.name)
             }
             if (policy.phase == RoutingPolicy.Phase.RELEASED && hfpStarted) {
                 postConfirmationDeadlineAt?.let { deadline ->
-                    scheduleTick(minOf(deadline, now + HFP_VERIFY_POLL_MS), "POST_CONFIRMATION_POLL")
+                    val desired = minOf(deadline, now + HFP_VERIFY_POLL_MS)
+                    scheduleTick(minOf(desired, previousTickAt?.takeIf { it > now } ?: desired), "POST_CONFIRMATION_POLL")
                 }
             }
         }
@@ -1215,6 +1277,9 @@ class RouterInCallService :
         postConfirmationDeadlineAt = null
         postConfirmationWatchComplete = false
         postConfirmationLossObserved = false
+        postConfirmationObservationIncomplete = false
+        suspectedAudioLossAt = null
+        suspectedAudioLossSampleAt = null
         manualCooldownUntil = now + 1_500
         RouterLog.event("MANUAL_TEST", "One request only; projection gate bypassed explicitly")
         evaluate()
@@ -1254,6 +1319,7 @@ class RouterInCallService :
         records.forEach { (call, record) -> call.unregisterCallback(record.callback) }
         records.clear()
         projectionMonitor.close()
+        audioFramework.close()
         hfp.close()
         settings.prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
         if (SessionBridge.controller?.get() === this) SessionBridge.controller = null

@@ -38,6 +38,7 @@ class RoutingCallbackPropertyTest {
                         projection = evidence(random),
                         targetHfpConnected = evidence(random),
                         targetHfpAudio = evidence(random),
+                        targetHfpSampleAt = now,
                         selectorRecoveryAvailable = evidence(random),
                         targetAvailable = evidence(random),
                         endpointRevision = session.toLong() * 100 + it,

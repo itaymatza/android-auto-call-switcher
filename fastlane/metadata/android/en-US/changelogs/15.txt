@@ -1,0 +1,3 @@
+Version 0.3.0-beta.13
+
+Keep slow Bluetooth and diagnostic queries off the routing thread. Require fresh, distinct audio samples for confirmation, recheck initial Android Auto state before routing, and report incomplete observation separately from audio instability. Show when selector recovery requires competing-device setup.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0-beta.13
+
+- Run HFP and optional audio-framework queries on bounded single-flight workers; ignore invalidated results after proxy changes and teardown.
+- Require fresh, distinct HFP samples for target-audio confirmation and preserve pending sampling deadlines across callback bursts.
+- Recheck initial disconnected projection within the existing pre-action evidence window; retain suspension after a submitted request.
+- Separate current audio evidence from historical confirmation, classify late watchdog observations as incomplete, and allow teardown grace before marking a corroborated takeover unstable.
+- Expose selector recovery configuration and current eligibility in diagnostics. The one-target-request budget and Samsung Phone ownership remain unchanged.
+
+
 ## Unreleased
 
 ## 0.3.0-beta.11

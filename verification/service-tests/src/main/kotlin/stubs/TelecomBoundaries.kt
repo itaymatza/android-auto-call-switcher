@@ -1,5 +1,7 @@
 package org.carcallrouter.companion.telecom
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.telecom.Call
 
@@ -14,6 +16,8 @@ class HfpMonitor(
     private val changed: () -> Unit,
 ) : AutoCloseable {
     private var started = false
+    private var pending = false
+    private var closed = false
     private var sampledKnown = false
     private var sampledDevices = emptySet<String>()
     private var sampledAudioDevices = emptySet<String>()
@@ -40,7 +44,24 @@ class HfpMonitor(
         trigger: String = "unspecified",
         notify: Boolean = true,
     ) {
-        if (!started) return
+        if (!started || closed || pending) return
+        if (queryDelayMs > 0) {
+            pending = true
+            val observedAt = SystemClock.elapsedRealtime()
+            Handler(Looper.getMainLooper()).postDelayed({
+                pending = false
+                if (!closed) {
+                    sampledKnown = isKnown
+                    sampledDevices = devices
+                    sampledAudioDevices = audioDevices
+                    sampledAt = observedAt
+                    sampleSequence++
+                    refreshes++
+                    changed()
+                }
+            }, queryDelayMs)
+            return
+        }
         sampledKnown = isKnown
         sampledDevices = devices
         sampledAudioDevices = audioDevices
@@ -51,10 +72,13 @@ class HfpMonitor(
     }
 
     override fun close() {
+        closed = true
         instances.remove(this)
     }
 
     companion object {
+        const val MAX_SAMPLE_AGE_MS = 750L
+        var queryDelayMs = 0L
         var isKnown = true
         var devices = setOf<String>()
         var audioDevices = setOf<String>()

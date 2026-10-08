@@ -32,7 +32,7 @@ compiled implementation, preventing either harness from maintaining a private co
 3. `RoutingPolicy` rejects the snapshot unless all automatic-mode prerequisites hold. A manual one-shot bypasses only the master-toggle and projection checks.
 4. After at least 300 ms of post-ACTIVE settling, extended by call-start activity up to 900 ms, `AddressedTelecomRouter` submits the exact current target callback object once, even when Telecom already displays BMW but actual SCO belongs elsewhere.
 5. A matching endpoint produces diagnostic `TELECOM_ENDPOINT_CONFIRMED`, but neither an accepted outcome nor the endpoint display proves that physical call audio moved.
-6. Only the exact configured Bluetooth address owning HFP/SCO continuously for the confirmation interval produces `TARGET_HFP_AUDIO_CONFIRMED` and releases the transaction.
+6. Only the exact configured Bluetooth address owning HFP/SCO in distinct fresh samples spanning the confirmation interval produces `TARGET_HFP_AUDIO_CONFIRMED` and releases the transaction.
 7. The transaction never retries or reasserts BMW. API 37 endpoint-request callbacks are recorded; call-start requests can extend the bounded settling window, and an external request after the target request suppresses selector recovery. The callback cannot establish who requested a route. Manual Dialer changes remain system-owned.
 8. If the transaction expires in the exact captured split state—Telecom displays BMW while the configured Android Auto endpoint still owns SCO—the app makes one bounded selector-recovery request for that already-active Android Auto endpoint. This reconciles Samsung's display with physical audio so BMW becomes selectable again. It is not a second BMW attempt and is never repeated. A subsequent speaker, handset, wired, or other-Bluetooth route suspends the policy; an already-submitted platform request cannot be recalled.
 
@@ -83,3 +83,11 @@ This implementation does not replace the default dialer, manage media profiles, 
 ## References
 
 [1]: https://developer.android.com/reference/android/telecom/InCallService "Android Developers: InCallService reference"
+
+## Beta.13 evidence and responsiveness
+
+HFP queries and optional audio-framework probes run through `SingleFlightQuery` on separate workers. At most one query per monitor may be outstanding. Proxy invalidation and lifecycle shutdown discard obsolete completions without queuing replacement work behind a stalled Binder call. Evidence is timestamped at query start and expires after 750 ms. Confirmation requires distinct positive sample timestamps spanning the stability interval; a long observation gap resets it.
+
+Before the first target request, disconnected or unknown projection can be rechecked within the existing ten-second evidence deadline. Requests require a positive provider result. Confirmed projection loss after submission still ends the transaction. Sampling retains the earliest pending deadline across callbacks.
+
+Target confirmation is historical. Current target-audio evidence can become unknown or absent without reasserting routing. A watchdog firing well after its observation deadline records incomplete observation rather than classifying a teardown sample as in-window failure. Corroborated takeover requires fresh alternative SCO ownership and a 500 ms grace interval; immediate call shutdown is not counted as instability. Event-driven HFP monitoring continues while projection is active, with no full-call high-frequency poll.

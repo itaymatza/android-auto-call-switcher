@@ -87,6 +87,8 @@ class RoutingPolicy(
         val targetHfpConnected: Boolean?,
         /** True only while the configured HFP device owns call audio. */
         val targetHfpAudio: Boolean?,
+        /** Start timestamp of the HFP query; missing or stale samples cannot authorize routing. */
+        val targetHfpSampleAt: Long?,
         /** True only when the configured competing endpoint currently owns HFP audio. */
         val selectorRecoveryAvailable: Boolean?,
         /** null means Telecom has not delivered its first endpoint snapshot yet. */
@@ -125,6 +127,7 @@ class RoutingPolicy(
     private var inFlightAttempt: Int? = null
     private var inFlightUntil: Long? = null
     private var targetAudioSince: Long? = null
+    private var lastPositiveSampleAt: Long? = null
     private var selectorRecoveryDeadline: Long? = null
     private var selectorRecoveryAccepted = false
     private var externalRequestAfterTarget = false
@@ -142,6 +145,7 @@ class RoutingPolicy(
         inFlightAttempt = null
         inFlightUntil = null
         targetAudioSince = null
+        lastPositiveSampleAt = null
         selectorRecoveryDeadline = null
         selectorRecoveryAccepted = false
         externalRequestAfterTarget = false
@@ -259,7 +263,8 @@ class RoutingPolicy(
         if (!s.active) return stop("Call is no longer ACTIVE", ReasonCode.CALL_NOT_ACTIVE)
         if (!manual && !s.enabled) return stop("Master toggle is off", ReasonCode.DISABLED)
         if (!manual && s.projection == false) {
-            return stop("Android Auto projection is not active", ReasonCode.PROJECTION_DISCONNECTED)
+            if (requests > 0) return stop("Android Auto projection is not active", ReasonCode.PROJECTION_DISCONNECTED)
+            return waitFor("Rechecking Android Auto before the first request", ReasonCode.PROJECTION_DISCONNECTED, s.now)
         }
         if (!manual && s.projection == null) {
             return waitFor("Waiting for Android Auto projection evidence", ReasonCode.PROJECTION_UNKNOWN, s.now)
@@ -308,10 +313,23 @@ class RoutingPolicy(
             return fail("Evidence deadline expired before safe routing could start", ReasonCode.EVIDENCE_DEADLINE_EXPIRED)
         }
 
-        if (s.targetHfpAudio == true) {
-            val since = targetAudioSince ?: s.now.also { targetAudioSince = it }
+        val sampleAt = s.targetHfpSampleAt
+        val sampleFresh = sampleAt != null && s.now - sampleAt in 0..MAX_HFP_SAMPLE_AGE_MS
+        val targetAudio = if (sampleFresh) s.targetHfpAudio else null
+        if (targetAudio == true) {
+            val observedAt = requireNotNull(sampleAt)
+            if (observedAt > currentDeadline()) {
+                return fail("Audio confirmation arrived after its observation deadline", ReasonCode.TARGET_AUDIO_NOT_CONFIRMED)
+            }
+            val previous = lastPositiveSampleAt
+            if (previous != null && (observedAt < previous || observedAt - previous > MAX_HFP_SAMPLE_AGE_MS)) {
+                targetAudioSince = null
+            }
+            lastPositiveSampleAt = observedAt
+            val since = targetAudioSince ?: observedAt.also { targetAudioSince = it }
             val stableAt = since + targetAudioStableMs
-            if (s.now < stableAt) {
+            // Time passing on one cached sample cannot demonstrate stable physical audio.
+            if (observedAt < stableAt) {
                 if (s.now >= currentDeadline()) {
                     return fail(
                         "BMW HFP audio did not remain stable within the bounded window",
@@ -321,7 +339,7 @@ class RoutingPolicy(
                 phase = Phase.STABILIZING
                 reason = "BMW owns HFP audio; confirming it remains stable"
                 reasonCode = ReasonCode.TARGET_AUDIO_CONFIRMING
-                return Decision(wakeAt = minOf(stableAt, currentDeadline()))
+                return Decision(wakeAt = minOf(maxOf(stableAt, s.now + 250), currentDeadline()))
             }
             verified = true
             phase = Phase.RELEASED
@@ -331,6 +349,7 @@ class RoutingPolicy(
             return Decision()
         }
         targetAudioSince = null
+        lastPositiveSampleAt = null
 
         if (requests == 0) {
             // Availability is required to submit the request. Once submitted, Telecom may
@@ -340,7 +359,7 @@ class RoutingPolicy(
                 val code = if (s.targetAvailable == null) ReasonCode.WAITING_ENDPOINT_SNAPSHOT else ReasonCode.WAITING_TARGET_ENDPOINT
                 return waitFor("Waiting for BMW in Telecom's endpoint list", code, s.now)
             }
-            if (s.targetHfpAudio == null) {
+            if (targetAudio == null) {
                 return waitFor("Waiting for current HFP audio ownership", ReasonCode.TARGET_HFP_UNKNOWN, s.now)
             }
             requests = 1
@@ -370,7 +389,7 @@ class RoutingPolicy(
                 selectorRecoveries == 0 &&
                 !externalRequestAfterTarget &&
                 s.route == Route.TARGET &&
-                s.targetHfpAudio == false &&
+                targetAudio == false &&
                 s.selectorRecoveryAvailable == true
             ) {
                 selectorRecoveries = 1
@@ -446,7 +465,8 @@ class RoutingPolicy(
         return Decision()
     }
 
-    private companion object {
+    companion object {
+        const val MAX_HFP_SAMPLE_AGE_MS = 750L
         val protectedUserRoutes = setOf(Route.SPEAKER, Route.HANDSET, Route.WIRED, Route.OTHER_BLUETOOTH)
         val terminalPhases = setOf(Phase.IDLE, Phase.RELEASED, Phase.SUSPENDED, Phase.FAILED)
     }

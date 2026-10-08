@@ -15,6 +15,7 @@ class RouterSettings(
         val result: Result
             get() =
                 when {
+                    confirmation == "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE" -> Result.INCOMPLETE
                     phase == "FAILED" -> Result.FAILED
                     confirmation == "TARGET_HFP_AUDIO_UNSTABLE" -> Result.UNSTABLE
                     confirmation == "TARGET_HFP_AUDIO" &&

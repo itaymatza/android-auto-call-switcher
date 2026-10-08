@@ -29,6 +29,7 @@ private fun snapshot(
     projection = projection,
     targetHfpConnected = targetHfpConnected,
     targetHfpAudio = targetHfpAudio,
+    targetHfpSampleAt = now,
     selectorRecoveryAvailable = selectorRecoveryAvailable,
     targetAvailable = targetAvailable,
     endpointRevision = 1,
