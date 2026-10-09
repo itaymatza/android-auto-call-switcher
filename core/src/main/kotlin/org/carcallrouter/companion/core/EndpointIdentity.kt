@@ -25,19 +25,20 @@ object EndpointIdentity {
         candidates: List<Candidate>,
         targetHfpConnected: Boolean,
         connectedHfpCount: Int,
+        liveTargetLabels: Set<String> = emptySet(),
+        otherConnectedLabels: Set<String> = emptySet(),
     ): Resolution {
         if (!targetHfpConnected) return Resolution.Unavailable("Selected device is not connected for calls")
         if (candidates.isEmpty()) return Resolution.Unavailable("Telecom has not offered a Bluetooth call endpoint")
 
-        val normalized = normalize(savedLabel)
-        val labelMatches =
-            if (normalized.isEmpty()) {
-                emptyList()
-            } else {
-                candidates.filter {
-                    normalize(it.label) == normalized
-                }
-            }
+        // Current labels come from the exact connected Bluetooth address. A saved name may
+        // have changed since setup, so it must not override current device identity evidence.
+        val labels = (liveTargetLabels.ifEmpty { setOf(savedLabel) }).map(::normalize).filter { it.isNotEmpty() }.toSet()
+        val conflicts = otherConnectedLabels.map(::normalize).toSet()
+        val labelMatches = candidates.filter { normalize(it.label) in labels }
+        if (labelMatches.any { normalize(it.label) in conflicts }) {
+            return Resolution.Unavailable("Connected Bluetooth devices share the selected endpoint name")
+        }
         if (labelMatches.size == 1) {
             return Resolution.Matched(labelMatches.single(), Basis.UNIQUE_LABEL)
         }

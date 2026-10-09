@@ -59,13 +59,13 @@ object PolicyCases {
                 check(waiting.wakeAt == 500L)
                 check(p.evaluate(snapshot(500)).requestTarget)
             },
-            "displayed BMW with Android Auto SCO still forces request" to {
+            "displayed selected device with Android Auto SCO still forces request" to {
                 val p = policy()
                 val decision = p.evaluate(snapshot(0, route = Route.TARGET, targetHfpAudio = false))
                 check(decision.requestTarget)
                 check(p.requests == 1)
             },
-            "only actual BMW HFP audio can verify success" to {
+            "only actual selected device HFP audio can verify success" to {
                 val p = policy(stableMs = 100)
                 p.evaluate(snapshot(0, route = Route.TARGET, targetHfpAudio = false))
                 p.evaluate(snapshot(10, route = Route.TARGET, targetHfpAudio = true))
@@ -75,7 +75,7 @@ object PolicyCases {
                 check(p.phase == Phase.RELEASED)
                 check(p.reasonCode == ReasonCode.TARGET_AUDIO_CONFIRMED)
             },
-            "transient BMW SCO does not verify" to {
+            "transient selected device SCO does not verify" to {
                 val p = policy(stableMs = 100)
                 p.evaluate(snapshot(0))
                 p.evaluate(snapshot(10, targetHfpAudio = true))
@@ -95,7 +95,7 @@ object PolicyCases {
                 check(p.phase == Phase.FAILED)
                 check(p.reasonCode == ReasonCode.TARGET_AUDIO_NOT_CONFIRMED)
             },
-            "split-brain failure restores the manual BMW selector once" to {
+            "split-brain failure restores the manual selector for the selected call device once" to {
                 val p = policy(actionWindowMs = 4_000)
                 check(p.evaluate(snapshot(0, route = Route.TARGET)).requestTarget)
                 val recovery =
@@ -190,7 +190,7 @@ object PolicyCases {
                     check(p.selectorRecoveries == 1)
                 }
             },
-            "accepted Telecom request still needs BMW SCO" to {
+            "accepted Telecom request still needs selected device SCO" to {
                 val p = policy(actionWindowMs = 1_000)
                 val request = p.evaluate(snapshot(0))
                 p.requestSucceeded(requireNotNull(request.requestAttempt), 100)
@@ -270,6 +270,9 @@ object PolicyCases {
             "HFP connectivity and endpoint evidence are mandatory" to {
                 val disconnected = policy()
                 disconnected.evaluate(snapshot(0, targetHfpConnected = false))
+                check(disconnected.reasonCode == ReasonCode.WAITING_TARGET_HFP)
+                check(disconnected.evaluate(snapshot(500)).requestTarget)
+                disconnected.evaluate(snapshot(600, targetHfpConnected = false))
                 check(disconnected.reasonCode == ReasonCode.TARGET_HFP_DISCONNECTED)
                 val unknown = policy()
                 unknown.evaluate(snapshot(0, targetHfpConnected = null))
@@ -310,7 +313,16 @@ object PolicyCases {
                 check(!p.evaluate(snapshot(1, targetHfpAudio = true)).requestTarget)
                 check(p.phase == Phase.SUSPENDED)
             },
-            "already-active BMW audio releases without a request after stability" to {
+            "initial target connection waiting never extends its evidence deadline" to {
+                val p = policy()
+                check(!p.evaluate(snapshot(0, targetHfpConnected = false)).requestTarget)
+                check(!p.evaluate(snapshot(9_999, targetHfpConnected = false)).requestTarget)
+                check(!p.evaluate(snapshot(10_000, targetHfpConnected = false)).requestTarget)
+                check(p.phase == Phase.FAILED)
+                check(!p.evaluate(snapshot(10_001)).requestTarget)
+                check(p.requests == 0)
+            },
+            "already-active selected device audio releases without a request after stability" to {
                 val p = policy(stableMs = 100)
                 val first = p.evaluate(snapshot(0, targetHfpAudio = true, route = Route.TARGET))
                 check(!first.requestTarget)

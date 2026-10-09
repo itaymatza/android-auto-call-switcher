@@ -88,7 +88,7 @@ object RouterLog {
                 try {
                     context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
                         writer.appendLine(
-                            "Car Call Router ${BuildConfig.VERSION_NAME}; Android SDK ${android.os.Build.VERSION.SDK_INT}",
+                            "Android Auto Call Switcher ${BuildConfig.VERSION_NAME}; Android SDK ${android.os.Build.VERSION.SDK_INT}",
                         )
                         writer.appendLine(
                             "Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}; " +
@@ -128,7 +128,7 @@ object RouterLog {
             "Question: did answer change the route? Compare dialing and ACTIVE boundaries, endpoint revisions, HFP audio owners and request outcomes.\n",
         )
         writer.append(
-            "Question: did BMW lose audio later? Evidence: CONFIRMED_AUDIO_CHANGED and post-confirmation watch completion; unobserved intervals remain UNKNOWN.\n",
+            "Question: did selected device lose audio later? Evidence: CONFIRMED_AUDIO_CHANGED and post-confirmation watch completion; unobserved intervals remain UNKNOWN.\n",
         )
         writer.append(
             "Question: did a competing request replace ours? Evidence: route request outcomes and endpoint callbacks; external requester identity is UNKNOWN.\n",

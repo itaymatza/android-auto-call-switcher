@@ -3,7 +3,7 @@ package org.carcallrouter.companion.core
 /**
  * A bounded, one-shot call-routing transaction.
  *
- * Android Auto is allowed to finish its call-start routing, one BMW request is made, and success
+ * Android Auto is allowed to finish its call-start routing, one selected device request is made, and success
  * is based on target HFP audio rather than Telecom's displayed endpoint. A failed split-brain
  * transaction may restore the already-active Android Auto endpoint once for manual selection.
  */
@@ -193,7 +193,7 @@ class RoutingPolicy(
     /**
      * Route callbacks are intentionally observational. They cannot reliably distinguish Samsung
      * call-start routing from a deliberate user choice, and this transaction never reasserts after
-     * its single BMW request.
+     * its single selected device request.
      */
     fun observeRoute(
         route: Route,
@@ -223,7 +223,7 @@ class RoutingPolicy(
         if (inFlightAttempt != attempt || phase in terminalPhases) return
         clearPendingRequest()
         phase = Phase.VERIFYING
-        reason = "Telecom accepted the one-shot request; awaiting BMW HFP audio"
+        reason = "Telecom accepted the one-shot request; awaiting selected device HFP audio"
         reasonCode = ReasonCode.REQUEST_ACCEPTED
         @Suppress("UNUSED_VARIABLE")
         val callbackAt = now
@@ -240,11 +240,11 @@ class RoutingPolicy(
                 // A timeout can race the actual Bluetooth transition. Never send another request;
                 // keep observing target HFP audio until the bounded action deadline.
                 phase = Phase.VERIFYING
-                reason = "Telecom request timed out; awaiting BMW HFP audio without retrying"
+                reason = "Telecom request timed out; awaiting selected device HFP audio without retrying"
                 reasonCode = ReasonCode.REQUEST_TIMED_OUT
             }
             RequestError.ENDPOINT_GONE ->
-                fail("BMW endpoint disappeared during the one-shot request", ReasonCode.REQUEST_ENDPOINT_GONE)
+                fail("Selected device endpoint disappeared during the one-shot request", ReasonCode.REQUEST_ENDPOINT_GONE)
             RequestError.CANCELLED_BY_OTHER ->
                 suspend(
                     "Another endpoint request replaced the one-shot request; automation stopped",
@@ -265,7 +265,7 @@ class RoutingPolicy(
     fun selectorRecoveryFailed() {
         if (phase != Phase.RECOVERING_SELECTOR) return
         fail(
-            "Could not restore Samsung's manual BMW selector after split-brain routing",
+            "Could not restore manual selector for the selected call device after split-brain routing",
             ReasonCode.SELECTOR_RECOVERY_FAILED,
         )
     }
@@ -287,7 +287,7 @@ class RoutingPolicy(
         selectorRecoveryDeadline?.let { deadline ->
             if (s.route == Route.COMPETING_DEVICE) {
                 return fail(
-                    "Android Auto endpoint display restored; manual BMW selection is available",
+                    "Android Auto endpoint display restored; manual selection of the preferred device is available",
                     ReasonCode.SELECTOR_RECOVERY_CONFIRMED,
                 )
             }
@@ -312,7 +312,8 @@ class RoutingPolicy(
             return Decision(wakeAt = deadline)
         }
         if (s.targetHfpConnected == false) {
-            return stop("Configured BMW device is not connected for HFP", ReasonCode.TARGET_HFP_DISCONNECTED)
+            if (requests > 0) return stop("Selected call device is not connected for HFP", ReasonCode.TARGET_HFP_DISCONNECTED)
+            return waitFor("Waiting for the selected Bluetooth call device to connect", ReasonCode.WAITING_TARGET_HFP, s.now)
         }
         if (s.targetHfpConnected == null) {
             return waitFor("Waiting for Bluetooth HFP evidence", ReasonCode.TARGET_HFP_UNKNOWN, s.now)
@@ -347,18 +348,18 @@ class RoutingPolicy(
             if (observedAt < stableAt) {
                 if (s.now >= currentDeadline()) {
                     return fail(
-                        "BMW HFP audio did not remain stable within the bounded window",
+                        "Selected device HFP audio did not remain stable within the bounded window",
                         ReasonCode.TARGET_AUDIO_NOT_CONFIRMED,
                     )
                 }
                 phase = Phase.STABILIZING
-                reason = "BMW owns HFP audio; confirming it remains stable"
+                reason = "Selected device owns HFP audio; confirming it remains stable"
                 reasonCode = ReasonCode.TARGET_AUDIO_CONFIRMING
                 return Decision(wakeAt = minOf(maxOf(stableAt, s.now + 250), currentDeadline()))
             }
             verified = true
             phase = Phase.RELEASED
-            reason = "BMW HFP audio confirmed; one-shot routing complete"
+            reason = "Selected device HFP audio confirmed; one-shot routing complete"
             reasonCode = ReasonCode.TARGET_AUDIO_CONFIRMED
             clearPendingRequest()
             return Decision()
@@ -372,7 +373,7 @@ class RoutingPolicy(
             // Exact, stable target HFP audio remains the stronger post-request evidence.
             if (s.targetAvailable != true) {
                 val code = if (s.targetAvailable == null) ReasonCode.WAITING_ENDPOINT_SNAPSHOT else ReasonCode.WAITING_TARGET_ENDPOINT
-                return waitFor("Waiting for BMW in Telecom's endpoint list", code, s.now)
+                return waitFor("Waiting for selected device in Telecom's endpoint list", code, s.now)
             }
             if (targetAudio == null) {
                 return waitFor("Waiting for current HFP audio ownership", ReasonCode.TARGET_HFP_UNKNOWN, s.now)
@@ -382,7 +383,7 @@ class RoutingPolicy(
             inFlightAttempt = 1
             inFlightUntil = s.now + platformRequestTimeoutMs
             phase = Phase.VERIFYING
-            reason = "One-shot BMW request submitted; awaiting HFP audio confirmation"
+            reason = "One-shot selected device request submitted; awaiting HFP audio confirmation"
             reasonCode = ReasonCode.REQUEST_SUBMITTED
             return Decision(
                 requestTarget = true,
@@ -411,7 +412,7 @@ class RoutingPolicy(
                 selectorRecoveryDeadline = s.now + platformRequestTimeoutMs
                 selectorRecoveryAccepted = false
                 phase = Phase.RECOVERING_SELECTOR
-                reason = "BMW display and SCO disagree; restoring Android Auto display for manual selection"
+                reason = "Selected device display and SCO disagree; restoring Android Auto display for manual selection"
                 reasonCode = ReasonCode.SELECTOR_RECOVERY_SUBMITTED
                 return Decision(
                     restoreSelector = true,
@@ -420,9 +421,9 @@ class RoutingPolicy(
             }
             return fail(
                 if (externalRequestAfterTarget) {
-                    "Another endpoint request occurred; BMW audio was not confirmed and no route was restored"
+                    "Another endpoint request occurred; selected device audio was not confirmed and no route was restored"
                 } else {
-                    "BMW HFP audio was not confirmed after the one-shot request"
+                    "Selected device HFP audio was not confirmed after the one-shot request"
                 },
                 if (externalRequestAfterTarget) ReasonCode.EXTERNAL_ENDPOINT_REQUEST else ReasonCode.TARGET_AUDIO_NOT_CONFIRMED,
             )
@@ -443,7 +444,7 @@ class RoutingPolicy(
                 if (actionDeadline == null) {
                     "Evidence deadline expired before safe routing could start"
                 } else {
-                    "BMW HFP audio was not confirmed after the one-shot request"
+                    "Selected device HFP audio was not confirmed after the one-shot request"
                 }
             return fail(failure, code)
         }

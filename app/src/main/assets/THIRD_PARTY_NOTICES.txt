@@ -1,4 +1,4 @@
-Car Call Router — third-party notices
+Android Auto Call Switcher — third-party notices
 
 Kotlin standard library 1.9.0
 Copyright 2010-2023 JetBrains s.r.o. and Kotlin Programming Language contributors.

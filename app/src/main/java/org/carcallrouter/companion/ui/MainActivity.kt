@@ -448,7 +448,7 @@ class MainActivity : Activity() {
             Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "text/plain"
-                putExtra(Intent.EXTRA_TITLE, "car-call-router-${System.currentTimeMillis()}.txt")
+                putExtra(Intent.EXTRA_TITLE, "android-auto-call-switcher-${System.currentTimeMillis()}.txt")
             }
         @Suppress("DEPRECATION")
         startActivityForResult(intent, REQUEST_EXPORT)

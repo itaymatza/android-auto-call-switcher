@@ -87,6 +87,8 @@ class AddressedTelecomRouter(
         savedLabel: String,
         targetHfpConnected: Boolean,
         connectedHfpCount: Int,
+        liveTargetLabels: Set<String> = emptySet(),
+        otherConnectedLabels: Set<String> = emptySet(),
     ): Target {
         val endpoints = available.filter { it.endpointType == CallEndpoint.TYPE_BLUETOOTH }
         val candidates =
@@ -100,6 +102,8 @@ class AddressedTelecomRouter(
                     candidates,
                     targetHfpConnected,
                     connectedHfpCount,
+                    liveTargetLabels,
+                    otherConnectedLabels,
                 )
         ) {
             is EndpointIdentity.Resolution.Matched ->
@@ -147,7 +151,7 @@ class AddressedTelecomRouter(
         accepted: (RequestTicket) -> Unit,
         rejected: (RequestTicket, CallEndpointException) -> Unit,
     ): RequestTicket {
-        check(available.any { it.identifier == endpoint.identifier }) {
+        check(available.any { it === endpoint }) {
             "Endpoint is no longer in Telecom's current callback set"
         }
         val createdAt = now()

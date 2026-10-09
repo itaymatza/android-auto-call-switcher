@@ -3,13 +3,25 @@
 Compatibility depends on Android Telecom, the phone vendor's Bluetooth behavior, the projection
 unit, and the target hands-free profile. A brand or model name alone is not enough to claim support.
 
+## Device roles
+
+Android Auto handles navigation, media, and its other functions. The preferred Bluetooth device
+handles cellular call speaker and microphone audio. It can be a headset, earbuds, speakerphone,
+or car system using classic Bluetooth HFP. LE Audio-only devices and hearing-aid profiles are not
+supported by the current HFP/SCO verification backend. Devices offering both LE Audio and classic
+HFP must actually expose a connected HFP call endpoint; pairing alone is insufficient.
+
+Selection uses the paired device identity and current call capability; there is no
+car-brand allowlist. A media-only Bluetooth speaker cannot supply a call endpoint.
+
 ## Required conditions
 
 - Android 14 or newer (API 34+).
 - The preferred device appears in Android's active-call audio selector as a Bluetooth endpoint.
 - Manually selecting it routes both call speaker and microphone correctly.
 - Android Auto remains connected for navigation/media after that manual selection.
-- The target can be selected unambiguously in the app.
+- The target can be selected unambiguously in the app. Current device names and aliases are read
+  from its exact connected address; conflicts with another connected device fail closed.
 - Runtime permissions and the protected Telecom authorization are detected.
 
 ## Evidence levels

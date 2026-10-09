@@ -1,8 +1,10 @@
-Car Call Router is an open-source Android 14+ utility for phones connected to both Android Auto and a separate Bluetooth hands-free device.
+Android Auto Call Switcher is an open-source Android 14+ utility for phones connected to both Android Auto and a separate classic Bluetooth HFP call device: earbuds, a headset, a speakerphone, or a car system.
 
-When an eligible cellular call becomes active, the app can ask Android Telecom to move call audio and microphone routing to the Bluetooth device you selected. Android Auto remains connected for navigation and media.
+When an eligible cellular call becomes active, the app can ask Android Telecom to move call audio and microphone routing to the Bluetooth device you selected. Android Auto continues handling maps, music, and its other functions. The selected Bluetooth device handles call speaker and microphone audio.
 
 Important requirements and limitations:
+
+• LE Audio-only devices and hearing-aid profiles are not supported by this version.
 
 • The preferred device must already appear in Android's in-call audio selector.
 • A one-time ADB authorization is required because Android offers no normal permission dialog for this protected Telecom capability.

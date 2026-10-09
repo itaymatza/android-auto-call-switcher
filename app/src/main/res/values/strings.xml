@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">Car Call Router</string>
-    <string name="app_description">Routes eligible phone calls to a chosen Bluetooth hands-free device while Android Auto stays connected.</string>
-    <string name="tagline">Keep calls on your chosen Bluetooth device</string>
+    <string name="app_name">Android Auto Call Switcher</string>
+    <string name="app_description">Uses your chosen Bluetooth hands-free device for call speaker and microphone audio while Android Auto handles everything else.</string>
+    <string name="tagline">Your chosen Bluetooth for calls. Android Auto for everything else.</string>
     <string name="setup_required">Setup required</string>
     <string name="ready_label">Ready</string>
     <string name="active_label">Automation active</string>
@@ -12,7 +12,7 @@
     <string name="readiness_authorization_title">Authorize call routing</string>
     <string name="readiness_authorization_message">Complete the one-time ADB authorization. Android provides no normal permission dialog for this non-dialer utility.</string>
     <string name="readiness_target_title">Choose your call device</string>
-    <string name="readiness_target_message">Select the paired Bluetooth device that should handle calls.</string>
+    <string name="readiness_target_message">Select a paired Bluetooth device for call speaker and microphone audio: a headset, earbuds, speakerphone, or car system. It must use classic Bluetooth hands-free (HFP) and appear in your Phone app’s call-audio selector. LE Audio-only devices are not supported yet.</string>
     <string name="readiness_ready_title">Ready to turn on</string>
     <string name="readiness_ready_message">Setup is complete. Enable automatic routing when you are ready.</string>
     <string name="readiness_active_title">Calls will use your selected device</string>
@@ -60,7 +60,7 @@
     <string name="verify_authorization">Verify</string>
     <string name="command_copied">Authorization command copied</string>
     <string name="target_step_title">2. Preferred call device</string>
-    <string name="target_missing">No device selected. Pair the car or headset in Android Bluetooth settings first.</string>
+    <string name="target_missing">No device selected. Pair your call device in Android Bluetooth settings first.</string>
     <string name="target_selected">✓ %1$s selected for calls</string>
     <string name="target_action">Choose Bluetooth device</string>
     <string name="target_action_change">Change selected device</string>

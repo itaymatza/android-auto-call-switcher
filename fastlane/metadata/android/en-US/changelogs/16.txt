@@ -1,3 +1,3 @@
 Version 0.3.0-beta.14
 
-Request BMW during outgoing dialing and revalidate at answer with bounded requests. Observe HFP ownership throughout active Android Auto calls. Export call-relative timing, duration, audio inventories, observation gaps and user wrong-audio reports. Keep Samsung Phone and manual route choices. Physical audio still needs device qualification.
+Request the preferred call device during outgoing dialing and revalidate at answer with bounded requests. Observe HFP ownership throughout active Android Auto calls. Export call-relative timing, duration, audio inventories, observation gaps and user wrong-audio reports. Keep the existing Phone app and manual route choices. Physical audio still needs device qualification.

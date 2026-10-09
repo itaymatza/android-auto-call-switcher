@@ -8,23 +8,25 @@ Calls are rejected when they are emergency or emergency-callback calls, external
 
 ## Bounded behavior
 
-A fresh automatic session has up to ten seconds to collect authoritative evidence. After the call
-becomes active, the policy waits at least 300 ms for Android Auto's call-start routing to settle;
-observed activity can extend that wait up to 900 ms. It then makes at most one request for BMW and
-observes the result for up to four seconds. There is no retry,
+A fresh automatic session has up to ten seconds to collect authoritative evidence. During outgoing
+dialing or after an incoming call becomes active, the policy waits at least 300 ms for Android Auto's call-start routing to settle;
+observed activity can extend that wait up to 900 ms. It then makes at most one target request per dialing/answer phase, with a maximum of two automatic
+target requests per call, and observes each transaction for up to four seconds. There is no retry,
 reassertion, or call-long route ownership. Telecom's displayed endpoint and accepted request result
 are diagnostic only; success requires the exact configured HFP device to own SCO continuously for
 the confirmation interval. A timeout may still be followed by late SCO confirmation, but it never
 authorizes another request. Endpoint disappearance, external cancellation, unknown errors, and
 runtime exceptions stop the transaction.
 
-If BMW is not confirmed and the final evidence proves the specific Samsung regression—Telecom
-still displays BMW while the configured Android Auto endpoint owns SCO—the app may make one
+If target is not confirmed and the final evidence proves the specific Samsung regression—Telecom
+still displays target while the configured Android Auto endpoint owns SCO—the app may make one
 additional request for that Android Auto endpoint. Its only purpose is to restore truthful selector
-state so the user can choose BMW manually. It is forbidden when the SCO owner or endpoint identity
-is unknown, when another route is displayed, or after one recovery attempt; it never retries BMW.
+state so the user can choose target manually. It is forbidden when the SCO owner or endpoint identity
+is unknown, when another route is displayed, or after one recovery attempt; it never retries target.
 
-Safety-relevant callback edges are latched before deferred evaluation. Therefore, confirmed projection loss, confirmed target HFP loss, a call hold, a second call, a conference child, a settings change during the session, service teardown, or user pause cancels further automatic requests for that session. Temporary unknown projection/HFP evidence and transient Telecom endpoint-list gaps are not treated as confirmed loss: the transaction waits, stale endpoints are never submitted, and evaluation resumes only from fresh callback evidence within the bounded window. `onCallEndpointRequested()` is never interpreted as verified user intent, because the callback does not identify its requester. Call-start activity can extend settling; an external request after the target attempt suppresses selector recovery while HFP verification continues. The one-BMW-request budget prevents a routing fight.
+Safety-relevant callback edges are latched before deferred evaluation. Therefore, confirmed projection loss, confirmed target HFP loss, a call hold, a second call, a conference child, a settings change during the session, service teardown, or user pause cancels further automatic requests for that session. Temporary unknown projection/HFP evidence and transient Telecom endpoint-list gaps are not treated as confirmed loss: the transaction waits, stale endpoints are never submitted, and evaluation resumes only from fresh callback evidence within the bounded window. `onCallEndpointRequested()` is never interpreted as verified user intent, because the callback does not identify its requester. Call-start activity can extend settling; an external request after the target attempt suppresses selector recovery while HFP verification continues. The per-phase target-request budget prevents a routing fight. Protected handset, speaker, and
+wired route callbacks during automatic routing latch suspension even if a later callback changes
+the displayed route back before evaluation.
 
 ## Authorization safety
 

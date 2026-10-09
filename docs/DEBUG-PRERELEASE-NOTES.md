@@ -1,13 +1,13 @@
 # Direct-download debug beta
 
-This pre-release makes the current Car Call Router beta installable as a direct APK download.
+This pre-release makes the current Android Auto Call Switcher beta installable as a direct APK download.
 
 ## Install
 
 1. Download the `.apk` attached to this release.
 2. Open the APK on an Android 14+ phone and allow the browser or file manager to install unknown
    apps when prompted.
-3. Open Car Call Router and complete the guided permissions, target-device selection, and
+3. Open Android Auto Call Switcher and complete the guided permissions, target-device selection, and
    one-time ADB authorization.
 4. Test the manual one-shot route while safely parked before enabling automatic routing.
 

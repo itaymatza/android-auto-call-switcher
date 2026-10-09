@@ -213,7 +213,7 @@ jobs:
               dist/apk-verification.txt \
               --target "$GITHUB_SHA" \
               --prerelease \
-              --title "Car Call Router $VERSION_NAME (debug beta)" \
+              --title "Android Auto Call Switcher $VERSION_NAME (debug beta)" \
               --notes-file docs/DEBUG-PRERELEASE-NOTES.md
           fi
           printf '[Download verified APK](https://github.com/%s/releases/download/%s/%s)\n' \

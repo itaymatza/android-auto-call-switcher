@@ -30,16 +30,19 @@ TAG_REQUIREMENTS = (
     ("battery optimized", "battery-optimized", 5),
     ("battery restricted", "battery-restricted", 5),
     ("Android Auto connected first", "android-auto-first", 10),
-    ("BMW Bluetooth connected first", "bmw-first", 10),
+    ("Preferred Bluetooth connected first", "target-first", 10),
     ("consecutive calls", "consecutive", 5),
     ("calls after idle", "after-idle", 5),
     ("speaker override", "override-speaker", 3),
     ("handset override", "override-handset", 3),
     ("wired override", "override-wired", 3),
     ("other Bluetooth override", "override-other-bluetooth", 3),
-    ("BMW disconnect", "bmw-disconnect", 5),
+    ("Preferred Bluetooth disconnect", "target-disconnect", 5),
     ("projection disconnect", "projection-disconnect", 5),
 )
+
+# Older captures used the initial test vehicle in their tag names.
+LEGACY_TAG_ALIASES = {"bmw-first": "target-first", "bmw-disconnect": "target-disconnect"}
 
 OBSERVATION_TAGS = {"projection-unknown", "hfp-unknown"}
 ALLOWED_TAGS = {tag for _, tag, _ in TAG_REQUIREMENTS} | OBSERVATION_TAGS
@@ -111,7 +114,10 @@ def load_evidence(root: Path) -> tuple[list[RunEvidence], list[str]]:
         result = verdict.get("verdict", "")
         if result not in {"PASS", "FAIL"}:
             errors.append(f"{run_dir}: verdict must be PASS or FAIL")
-        tags = tuple(sorted(set(filter(None, device.get("qualification_tags", "").split(",")))))
+        tags = tuple(sorted({
+            LEGACY_TAG_ALIASES.get(tag, tag)
+            for tag in filter(None, device.get("qualification_tags", "").split(","))
+        }))
         unknown = sorted(set(tags) - ALLOWED_TAGS)
         if unknown:
             errors.append(f"{run_dir}: unknown qualification tags: {', '.join(unknown)}")

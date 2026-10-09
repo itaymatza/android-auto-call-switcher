@@ -1,7 +1,8 @@
 # App metadata
 
-The public repository, installed application, release assets, and reusable store listing use the
-same product identity: **Car Call Router**.
+The installed application, release titles, and reusable store listing use the product identity
+**Android Auto Call Switcher**. Repository URLs and package identity retain `car-call-router` and
+`org.carcallrouter.companion` for upgrade and link continuity. The app is an independent utility.
 
 | Surface | Source of truth |
 | --- | --- |

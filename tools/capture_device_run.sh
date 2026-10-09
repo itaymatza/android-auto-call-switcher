@@ -19,8 +19,8 @@ Repeat --tag to classify a run for the production stability matrix. Use --help t
 Qualification tags:
   cold-start warm-start screen-off post-reboot
   battery-unrestricted battery-optimized battery-restricted
-  android-auto-first bmw-first consecutive after-idle
-  projection-unknown hfp-unknown bmw-disconnect projection-disconnect
+  android-auto-first target-first consecutive after-idle
+  projection-unknown hfp-unknown target-disconnect projection-disconnect
   override-speaker override-handset override-wired override-other-bluetooth
 EOF
 }
@@ -29,7 +29,13 @@ while (($#)); do
     case "$1" in
         --serial) SERIAL="${2:?missing serial}"; shift 2 ;;
         --scenario) SCENARIO="${2:?missing scenario}"; shift 2 ;;
-        --tag) TAGS+=("${2:?missing tag}"); shift 2 ;;
+        --tag)
+            tag="${2:?missing tag}"
+            case "$tag" in
+                bmw-first) tag="target-first" ;;
+                bmw-disconnect) tag="target-disconnect" ;;
+            esac
+            TAGS+=("$tag"); shift 2 ;;
         --package) PACKAGE="${2:?missing package}"; shift 2 ;;
         --output) OUTPUT="${2:?missing output directory}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -43,14 +49,14 @@ for tag in "${TAGS[@]}"; do
     case "$tag" in
         cold-start|warm-start|screen-off|post-reboot|\
         battery-unrestricted|battery-optimized|battery-restricted|\
-        android-auto-first|bmw-first|consecutive|after-idle|\
-        projection-unknown|hfp-unknown|bmw-disconnect|projection-disconnect|\
+        android-auto-first|target-first|consecutive|after-idle|\
+        projection-unknown|hfp-unknown|target-disconnect|projection-disconnect|\
         override-speaker|override-handset|override-wired|override-other-bluetooth) ;;
         *) echo "Unsupported qualification tag: $tag" >&2; exit 2 ;;
     esac
 done
 OVERRIDE_TAGS="$(printf '%s\n' "${TAGS[@]}" | grep -Ec '^override-' || true)"
-DISCONNECT_TAGS="$(printf '%s\n' "${TAGS[@]}" | grep -Ec '^(bmw|projection)-disconnect$' || true)"
+DISCONNECT_TAGS="$(printf '%s\n' "${TAGS[@]}" | grep -Ec '^(target|projection)-disconnect$' || true)"
 if [[ "$SCENARIO" == "override" && "$OVERRIDE_TAGS" != "1" ]] \
     || [[ "$SCENARIO" != "override" && "$OVERRIDE_TAGS" != "0" ]]; then
     echo "The override scenario requires exactly one override-* tag; other scenarios allow none." >&2
@@ -202,10 +208,10 @@ if [[ "$SCENARIO" == "override" ]]; then
     ask_observation user_override_respected "Was the manual route override respected without route fighting?"
 fi
 if [[ "$SCENARIO" == "selector-recovery" ]]; then
-    ask_observation split_brain_seen "Did Samsung Phone show BMW while call audio was actually on Android Auto?"
+    ask_observation split_brain_seen "Did the Phone app show the preferred call device while call audio was actually on Android Auto?"
     ask_observation selector_matched_actual_audio "Did the selector return to Android Auto after the bounded recovery?"
-    ask_observation target_became_selectable "Could you then select BMW manually?"
-    ask_observation manual_target_speaker_and_mic "Did that manual BMW selection move both speaker and microphone?"
+    ask_observation target_became_selectable "Could you then select the preferred call device manually?"
+    ask_observation manual_target_speaker_and_mic "Did that manual preferred-device selection move both speaker and microphone?"
 fi
 
 VERDICT="FAIL"
