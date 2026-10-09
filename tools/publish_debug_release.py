@@ -38,18 +38,31 @@ def verify_assets(directory: Path, apk_name: str, expected: dict | None = None) 
     return identity
 
 
-def publish(repo: str, tag: str, sha: str, apk: Path, notes: Path, execute=run) -> None:
-    identity = verify_assets(apk.parent, apk.name)
-    endpoint = f"repos/{repo}/releases/tags/{tag}"
+def find_release(repo: str, tag: str, execute) -> dict | None:
     try:
-        release = json.loads(execute("gh", "api", endpoint))
+        return json.loads(execute("gh", "api", f"repos/{repo}/releases/tags/{tag}"))
     except subprocess.CalledProcessError as error:
         if "HTTP 404" not in (error.stderr or ""):
             raise
+    # The by-tag endpoint exposes published releases only. Authenticated listing includes
+    # drafts; paginate so an interrupted older draft is not mistaken for a missing release.
+    pages = json.loads(execute("gh", "api", f"repos/{repo}/releases?per_page=100", "--paginate", "--slurp"))
+    matches = [item for page in pages for item in page if item["tag_name"] == tag]
+    if len(matches) > 1:
+        raise ValueError("Multiple releases have this tag; refusing ambiguous publication")
+    return matches[0] if matches else None
+
+
+def publish(repo: str, tag: str, sha: str, apk: Path, notes: Path, execute=run) -> None:
+    identity = verify_assets(apk.parent, apk.name)
+    release = find_release(repo, tag, execute)
+    if release is None:
         execute("gh", "release", "create", tag, "--repo", repo, "--target", sha,
                 "--draft", "--prerelease", "--title",
                 f"Android Auto Call Switcher {identity['version_name']} (debug beta)", "--notes-file", str(notes))
-        release = json.loads(execute("gh", "api", endpoint))
+        release = find_release(repo, tag, execute)
+    if release is None:
+        raise ValueError("Created draft is not visible; refusing to publish")
     if release["target_commitish"] != sha or not release["prerelease"]:
         raise ValueError("Existing release has unexpected source commit or channel")
     names = (apk.name, f"{apk.name}.sha256", "apk-verification.txt")

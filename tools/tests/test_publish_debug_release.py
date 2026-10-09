@@ -38,7 +38,9 @@ class ReleaseTest(unittest.TestCase):
     def execute(self, *args):
         self.calls.append(args)
         if args[1] == "api":
-            if self.metadata is None:
+            if "--slurp" in args:
+                return json.dumps([[], [dict(self.metadata, tag_name="vbeta-debug.commit")] if self.metadata else []])
+            if self.metadata is None or self.metadata["draft"]:
                 raise subprocess.CalledProcessError(1, args, stderr="gh: Not Found (HTTP 404)")
             return json.dumps(self.metadata)
         action = args[2]
@@ -112,7 +114,7 @@ class ReleaseTest(unittest.TestCase):
             self.calls.clear()
             with self.assertRaisesRegex(ValueError, "unexpected source"):
                 self.publish()
-            self.assertEqual(1, len(self.calls))
+            self.assertTrue(all(call[1] == "api" for call in self.calls))
 
     def test_network_failure_is_not_treated_as_missing_release(self):
         def fail(*args):
