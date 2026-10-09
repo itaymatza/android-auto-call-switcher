@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security, privacy, or safety report
-    url: https://github.com/itaymatza/car-call-router/security/policy
+    url: https://github.com/itaymatza/android-auto-call-switcher/security/policy
     about: Report sensitive vulnerabilities privately instead of opening a public issue.

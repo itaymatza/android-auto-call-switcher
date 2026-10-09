@@ -2,7 +2,7 @@
 # One-time owner setup for persistent GitHub Actions debug APK signing.
 set -euo pipefail
 
-REPOSITORY="itaymatza/car-call-router"
+REPOSITORY="itaymatza/android-auto-call-switcher"
 ENVIRONMENT="debug-signing"
 SIGNING_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/car-call-router"
 KEYSTORE="$SIGNING_DIR/debug-signing.p12"

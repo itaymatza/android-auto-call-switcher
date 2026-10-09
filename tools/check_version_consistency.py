@@ -43,7 +43,7 @@ def main() -> int:
             "installed app is named **Android Auto Call Switcher**",
             f"APP_VERSION_CODE={version_code}",
             f"APP_VERSION_NAME={version_name}",
-            "https://github.com/itaymatza/car-call-router/releases",
+            "https://github.com/itaymatza/android-auto-call-switcher/releases",
         ],
         "docs/CONFIGURATION.md": [f"`{version_code}`", f"`{version_name}`"],
         "docs/PRODUCTION-READINESS.md": [f"`{version_name}` is a production-hardening beta"],
@@ -77,7 +77,7 @@ def main() -> int:
         ],
         "app/src/main/res/values/strings.xml": [
             '<string name="app_name">Android Auto Call Switcher</string>',
-            "https://github.com/itaymatza/car-call-router/releases",
+            "https://github.com/itaymatza/android-auto-call-switcher/releases",
         ],
         "docs/assets/social-preview.svg": ["Android Auto Call Switcher"],
         "fastlane/metadata/android/en-US/title.txt": ["Android Auto Call Switcher"],
