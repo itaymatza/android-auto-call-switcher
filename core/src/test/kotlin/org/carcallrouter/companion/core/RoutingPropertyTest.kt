@@ -44,6 +44,7 @@ class RoutingPropertyTest {
                         active = random.nextInt(100) > 1,
                         singleCall = random.nextInt(100) > 1,
                         safeCellularCall = random.nextInt(100) > 1,
+                        callSafetyPending = random.nextInt(100) < 3,
                         projection = evidence(),
                         targetHfpConnected = evidence(),
                         targetHfpAudio = evidence(),
@@ -64,8 +65,9 @@ class RoutingPropertyTest {
                     check(!decision.restoreSelector)
                 }
                 if (decision.requestTarget) {
-                    check(snapshot.authorized && snapshot.active && snapshot.singleCall)
+                    check(snapshot.authorized == true && snapshot.active && snapshot.singleCall)
                     check(snapshot.safeCellularCall)
+                    check(!snapshot.callSafetyPending)
                     check(snapshot.targetHfpConnected == true && snapshot.targetAvailable == true)
                     check(snapshot.targetHfpAudio == false)
                     check(manual || (snapshot.enabled && snapshot.projection == true))

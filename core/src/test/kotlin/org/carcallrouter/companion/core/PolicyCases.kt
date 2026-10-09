@@ -26,6 +26,7 @@ private fun snapshot(
     active = active,
     singleCall = singleCall,
     safeCellularCall = safeCellularCall,
+    callSafetyPending = false,
     projection = projection,
     targetHfpConnected = targetHfpConnected,
     targetHfpAudio = targetHfpAudio,

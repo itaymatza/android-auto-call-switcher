@@ -12,7 +12,7 @@ class RoutingFreshnessTest {
         sampledAt: Long?,
         audio: Boolean? = true,
         projection: Boolean? = true,
-    ) = RoutingPolicy.Snapshot(now, true, true, true, true, true, projection, true, audio, sampledAt, false, true, 1, Route.TARGET)
+    ) = RoutingPolicy.Snapshot(now, true, true, true, true, true, false, projection, true, audio, sampledAt, false, true, 1, Route.TARGET)
 
     @Test
     fun cachedPositiveSampleCannotConfirmByPassageOfTime() {

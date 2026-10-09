@@ -2,6 +2,16 @@ package org.carcallrouter.companion.core
 
 /** Fail closed. A hidden telephone handle cannot be proven non-emergency in this version. */
 object CallSafety {
+    sealed interface Assessment {
+        data object Pending : Assessment
+
+        data object Safe : Assessment
+
+        data class Unsafe(
+            val reason: String,
+        ) : Assessment
+    }
+
     data class Evidence(
         val simAccount: Boolean?,
         val emergencyFlag: Boolean,

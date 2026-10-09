@@ -6,4 +6,4 @@ if [[ -z "${JAVA_HOME:-}" && -d '/Applications/Android Studio.app/Contents/jbr/C
     export JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
 fi
 bash "$ROOT/tools/bootstrap-gradle.sh"
-exec "$ROOT/.tools/gradle-8.13/bin/gradle" -p "$ROOT" "$@"
+exec "$ROOT/.tools/gradle-9.4.1/bin/gradle" -p "$ROOT" "$@"

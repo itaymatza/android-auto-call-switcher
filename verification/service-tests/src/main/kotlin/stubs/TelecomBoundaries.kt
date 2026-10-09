@@ -7,8 +7,37 @@ import android.telecom.Call
 
 class CellularClassifier(
     c: Context,
-) {
-    fun rejection(call: Call): String? = call.rejection
+    private val changed: () -> Unit,
+) : AutoCloseable {
+    fun assess(call: Call): org.carcallrouter.companion.core.CallSafety.Assessment =
+        if (pending) {
+            org.carcallrouter.companion.core.CallSafety.Assessment.Pending
+        } else {
+            call.rejection?.let(org.carcallrouter.companion.core.CallSafety.Assessment::Unsafe)
+                ?: org.carcallrouter.companion.core.CallSafety.Assessment.Safe
+        }
+
+    fun diagnosticFields(): Array<Pair<String, Any?>> = emptyArray()
+
+    fun clear() = Unit
+
+    fun remove(call: Call) = Unit
+
+    override fun close() = Unit
+
+    init {
+        instances.add(this)
+    }
+
+    companion object {
+        var pending = false
+        val instances = mutableListOf<CellularClassifier>()
+
+        fun complete() {
+            pending = false
+            instances.forEach { it.changed() }
+        }
+    }
 }
 
 class HfpMonitor(
@@ -107,4 +136,22 @@ class HfpMonitor(
             instances.filter { it.started }.forEach { it.refresh("broadcast") }
         }
     }
+}
+
+class AuthorizationMonitor(
+    c: Context,
+    private val changed: () -> Unit,
+) : AutoCloseable {
+    fun sample(): Boolean? =
+        if (org.carcallrouter.companion.Access.queryDelayMs >
+            0
+        ) {
+            null
+        } else {
+            org.carcallrouter.companion.Access.authorization
+        }
+
+    fun diagnosticFields(): Array<Pair<String, Any?>> = emptyArray()
+
+    override fun close() = Unit
 }

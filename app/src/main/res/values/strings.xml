@@ -127,4 +127,5 @@
     <string name="test_not_checked">Not checked / unsure</string>
     <string name="parked_test_saved">Observations recorded in the redacted log. Export it with your test report.</string>
     <string name="parked_test_changed">Call-device configuration changed. Start a new test report for this setup.</string>
+    <string name="authorization_checking">Checking call-routing access…</string>
 </resources>

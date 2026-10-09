@@ -5,6 +5,8 @@ package android.content
 import android.bluetooth.BluetoothManager
 
 open class Context {
+    val applicationContext: Context get() = this
+    val contentResolver = ContentResolver()
     var bluetoothGranted = true
     val manager = BluetoothManager()
     var receiver: BroadcastReceiver? = null
@@ -40,6 +42,8 @@ class Intent(
     val action: String?,
 )
 
-class IntentFilter {
+class IntentFilter(
+    action: String? = null,
+) {
     fun addAction(action: String) = Unit
 }

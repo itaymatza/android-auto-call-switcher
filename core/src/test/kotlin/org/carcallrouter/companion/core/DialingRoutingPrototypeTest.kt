@@ -36,6 +36,7 @@ class DialingRoutingPrototypeTest {
                     active = state != State.DISCONNECTED,
                     singleCall = single,
                     safeCellularCall = safe,
+                    callSafetyPending = false,
                     projection = projection,
                     targetHfpConnected = connected,
                     targetHfpAudio = audio,

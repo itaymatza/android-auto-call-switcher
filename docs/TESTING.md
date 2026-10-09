@@ -268,3 +268,15 @@ When LE/hearing-aid is observed and a fresh classic-profile query does not conta
 device, the readiness card must show the transport warning, not ready/active. Turning automation
 on must be unavailable, while an already-enabled switch must still allow turning it off. A fresh
 classic connection restores normal setup behavior; unknown evidence never grants per-call routing.
+
+
+The production call-safety host module also compiles `AuthorizationMonitor`. Its controlled
+worker/owner tests cover pending access, fresh grants, stale and failed reads, permission loss,
+and shutdown. Bluetooth host verification also compiles the real `ProjectionMonitor`, covering
+worker-only provider/cursor access and cleanup, delayed positives, broadcast generations,
+missing/unrecognized states, executor saturation and shutdown. Neither suite supplies physical
+audio qualification evidence.
+
+Coverage gates now also enforce at least 85% line / 65% branch coverage for production Bluetooth
+and projection monitors, and 90% line / 85% branch coverage for production call-safety and
+authorization monitors. Android boundary doubles are excluded from these measurements.

@@ -20,8 +20,8 @@ sourceSets.main {
         srcDir(rootProject.file("app/src/main/java"))
         srcDir(rootProject.file("verification/service-tests/src/main/kotlin"))
         include("safetystubs/**/*.kt")
-        include("stubs/SuppressLint.kt")
-        include("org/carcallrouter/companion/telecom/CellularClassifier.kt")
+        include("stubs/SuppressLint.kt", "stubs/Os.kt")
+        include("org/carcallrouter/companion/telecom/CellularClassifier.kt", "org/carcallrouter/companion/telecom/AuthorizationMonitor.kt")
     }
 }
 
@@ -38,8 +38,26 @@ tasks.jacocoTestReport {
     dependsOn(tasks.test)
     classDirectories.setFrom(
         sourceSets.main.get().output.asFileTree.matching {
-            include("org/carcallrouter/companion/telecom/CellularClassifier*")
+            include("org/carcallrouter/companion/telecom/CellularClassifier*", "org/carcallrouter/companion/telecom/AuthorizationMonitor*")
         },
     )
     reports { xml.required.set(true) }
 }
+
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                minimum = "0.90".toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                minimum = "0.85".toBigDecimal()
+            }
+        }
+    }
+}
+tasks.check { dependsOn(tasks.jacocoTestCoverageVerification) }

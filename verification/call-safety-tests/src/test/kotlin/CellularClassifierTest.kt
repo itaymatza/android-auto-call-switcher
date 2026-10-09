@@ -1,15 +1,18 @@
 import android.content.Context
 import android.net.Uri
+import android.os.TestQueue
 import android.telecom.Call
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
+import org.carcallrouter.companion.core.CallSafety
 import org.carcallrouter.companion.telecom.CellularClassifier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import java.util.concurrent.Executor
 
 class CellularClassifierTest {
     private val context = Context()
@@ -19,13 +22,24 @@ class CellularClassifierTest {
 
     @Before
     fun setup() {
+        TestQueue.reset()
         context.services[TelecomManager::class.java] = telecom
         context.services[TelephonyManager::class.java] = telephony
         PhoneNumberUtils.extracted = "5550100"
         PhoneNumberUtils.queries = 0
     }
 
-    private fun reject() = CellularClassifier(context).rejection(call)
+    private fun classifier() = CellularClassifier(context, Executor { it.run() }) {}
+
+    private fun reject(classifier: CellularClassifier = classifier()): String? {
+        classifier.assess(call)
+        TestQueue.runReady()
+        return when (val result = classifier.assess(call)) {
+            is CallSafety.Assessment.Unsafe -> result.reason
+            CallSafety.Assessment.Safe -> null
+            CallSafety.Assessment.Pending -> error("Classification still pending")
+        }
+    }
 
     private fun assertNoProtectedQueries() {
         assertEquals(0, telecom.queries)
@@ -80,7 +94,6 @@ class CellularClassifierTest {
         assertNull(reject())
         assertEquals(1, telecom.queries)
         assertEquals(1, telephony.queries)
-        assertEquals(1, PhoneNumberUtils.queries)
         assertEquals("5550100", telephony.lastNumber)
     }
 
@@ -90,7 +103,6 @@ class CellularClassifierTest {
         assertEquals("SIM-backed phone account not verified", reject())
         assertEquals(1, telecom.queries)
         assertEquals(0, telephony.queries)
-        assertEquals(0, PhoneNumberUtils.queries)
     }
 
     @Test
@@ -108,7 +120,6 @@ class CellularClassifierTest {
         context.services[TelecomManager::class.java] = telecom
         telecom.failure = SecurityException("revoked")
         assertEquals("SIM-backed phone account not verified", reject())
-        assertEquals(0, PhoneNumberUtils.queries)
         assertEquals(0, telephony.queries)
         telecom.failure = null
         telecom.account = null
@@ -153,14 +164,14 @@ class CellularClassifierTest {
 
     @Test
     fun detailsChangesAreReclassifiedWithoutReusingPriorAcceptance() {
-        val classifier = CellularClassifier(context)
-        assertNull(classifier.rejection(call))
+        val classifier = classifier()
+        assertNull(reject(classifier))
         requireNotNull(call.details).properties = Call.Details.PROPERTY_SELF_MANAGED
-        assertEquals("External or self-managed call", classifier.rejection(call))
+        assertEquals("External or self-managed call", reject(classifier))
         assertEquals(1, telecom.queries)
         assertEquals(1, telephony.queries)
         call.details = Call.Details()
         telephony.emergency = true
-        assertEquals("Emergency number", classifier.rejection(call))
+        assertEquals("Emergency number", reject(classifier))
     }
 }

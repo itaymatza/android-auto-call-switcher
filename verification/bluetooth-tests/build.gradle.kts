@@ -21,7 +21,7 @@ sourceSets.main {
         srcDir(rootProject.file("verification/service-tests/src/main/kotlin"))
         include("bluetoothstubs/**/*.kt")
         include("stubs/Os.kt", "stubs/SuppressLint.kt")
-        include("org/carcallrouter/companion/telecom/HfpMonitor.kt")
+        include("org/carcallrouter/companion/telecom/HfpMonitor.kt", "org/carcallrouter/companion/ProjectionMonitor.kt")
         include("org/carcallrouter/companion/ui/CallDevicePreflight.kt")
         include("org/carcallrouter/companion/ui/CallDeviceCompatibility.kt")
         include("org/carcallrouter/companion/ui/LeAudioGroupConnection.kt")
@@ -41,8 +41,30 @@ tasks.jacocoTestReport {
     dependsOn(tasks.test)
     classDirectories.setFrom(
         sourceSets.main.get().output.asFileTree.matching {
-            include("org/carcallrouter/companion/telecom/HfpMonitor*", "org/carcallrouter/companion/ui/CallDevicePreflight*")
+            include(
+                "org/carcallrouter/companion/ProjectionMonitor*",
+                "org/carcallrouter/companion/telecom/HfpMonitor*",
+                "org/carcallrouter/companion/ui/CallDevicePreflight*",
+            )
         },
     )
     reports { xml.required.set(true) }
 }
+
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    classDirectories.setFrom(tasks.jacocoTestReport.get().classDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                minimum = "0.85".toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                minimum = "0.65".toBigDecimal()
+            }
+        }
+    }
+}
+tasks.check { dependsOn(tasks.jacocoTestCoverageVerification) }

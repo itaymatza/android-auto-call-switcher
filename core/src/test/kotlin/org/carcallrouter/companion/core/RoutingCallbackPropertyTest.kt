@@ -35,6 +35,7 @@ class RoutingCallbackPropertyTest {
                         active = random.nextInt(100) > 2,
                         singleCall = random.nextInt(100) > 2,
                         safeCellularCall = random.nextInt(100) > 2,
+                        callSafetyPending = random.nextInt(100) < 3,
                         projection = evidence(random),
                         targetHfpConnected = evidence(random),
                         targetHfpAudio = evidence(random),
@@ -56,8 +57,9 @@ class RoutingCallbackPropertyTest {
                 check(policy.selectorRecoveries <= 1)
                 decision.wakeAt?.let { wake -> check(wake > now) }
                 if (decision.requestTarget) {
-                    check(snapshot.authorized && snapshot.active && snapshot.singleCall)
+                    check(snapshot.authorized == true && snapshot.active && snapshot.singleCall)
                     check(snapshot.safeCellularCall)
+                    check(!snapshot.callSafetyPending)
                     check(snapshot.targetHfpConnected == true && snapshot.targetAvailable == true)
                     check(snapshot.targetHfpAudio == false)
                     check(manual || (snapshot.enabled && snapshot.projection == true))

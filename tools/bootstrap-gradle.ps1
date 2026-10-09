@@ -2,8 +2,8 @@
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
 $Cache = Join-Path $Root '.tools'
-$Version = '8.13'
-$Expected = '20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78'
+$Version = '9.4.1'
+$Expected = '2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb'
 $Exe = Join-Path $Cache "gradle-$Version\bin\gradle.bat"
 if (Test-Path $Exe) { exit 0 }
 New-Item -ItemType Directory -Force -Path $Cache | Out-Null

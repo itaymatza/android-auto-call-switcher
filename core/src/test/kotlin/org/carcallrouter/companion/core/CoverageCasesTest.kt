@@ -123,6 +123,7 @@ class CoverageCasesTest {
         active = true,
         singleCall = true,
         safeCellularCall = true,
+        callSafetyPending = false,
         projection = true,
         targetHfpConnected = true,
         targetHfpAudio = targetHfpAudio,

@@ -34,7 +34,9 @@ class RoutingPolicy(
         EXTERNAL_ENDPOINT_REQUEST,
         USER_PAUSED,
         AUTHORIZATION_MISSING,
+        AUTHORIZATION_UNKNOWN,
         UNSAFE_CALL,
+        WAITING_CALL_SAFETY,
         MULTIPLE_CALLS,
         CALL_NOT_ACTIVE,
         DISABLED,
@@ -78,10 +80,11 @@ class RoutingPolicy(
     data class Snapshot(
         val now: Long,
         val enabled: Boolean,
-        val authorized: Boolean,
+        val authorized: Boolean?,
         val active: Boolean,
         val singleCall: Boolean,
         val safeCellularCall: Boolean,
+        val callSafetyPending: Boolean,
         val projection: Boolean?,
         /** null means the Bluetooth profile service cannot currently provide evidence. */
         val targetHfpConnected: Boolean?,
@@ -272,7 +275,28 @@ class RoutingPolicy(
 
     fun evaluate(s: Snapshot): Decision {
         if (phase in terminalPhases) return Decision()
-        if (!s.authorized) return stop("Telecom authorization is missing or revoked", ReasonCode.AUTHORIZATION_MISSING)
+        if (s.authorized == false) return stop("Telecom authorization is missing or revoked", ReasonCode.AUTHORIZATION_MISSING)
+        if (s.authorized == null) {
+            if (!s.singleCall) return stop("Multiple calls / conference: system routing retained", ReasonCode.MULTIPLE_CALLS)
+            if (!s.active) return stop("Call is no longer ACTIVE", ReasonCode.CALL_NOT_ACTIVE)
+            if (!s.safeCellularCall &&
+                !s.callSafetyPending
+            ) {
+                return stop("Emergency, non-cellular or unclassified call", ReasonCode.UNSAFE_CALL)
+            }
+            if (!manual && !s.enabled) return stop("Master toggle is off", ReasonCode.DISABLED)
+            if (requests > 0) return stop("Telecom authorization evidence expired after a request", ReasonCode.AUTHORIZATION_MISSING)
+            val decision = waitFor("Waiting for fresh Telecom authorization evidence", ReasonCode.AUTHORIZATION_UNKNOWN, s.now)
+            return decision.copy(wakeAt = decision.wakeAt?.let { minOf(it, s.now + 250) })
+        }
+        if (s.callSafetyPending) {
+            if (!s.singleCall) return stop("Multiple calls / conference: system routing retained", ReasonCode.MULTIPLE_CALLS)
+            if (!s.active) return stop("Call is no longer ACTIVE", ReasonCode.CALL_NOT_ACTIVE)
+            if (!manual && !s.enabled) return stop("Master toggle is off", ReasonCode.DISABLED)
+            if (requests > 0) return stop("Call-safety evidence changed or expired after a request", ReasonCode.UNSAFE_CALL)
+            val decision = waitFor("Waiting for fresh call-safety evidence", ReasonCode.WAITING_CALL_SAFETY, s.now)
+            return decision.copy(wakeAt = decision.wakeAt?.let { minOf(it, s.now + 250) })
+        }
         if (!s.safeCellularCall) return stop("Emergency, non-cellular or unclassified call", ReasonCode.UNSAFE_CALL)
         if (!s.singleCall) return stop("Multiple calls / conference: system routing retained", ReasonCode.MULTIPLE_CALLS)
         if (!s.active) return stop("Call is no longer ACTIVE", ReasonCode.CALL_NOT_ACTIVE)
