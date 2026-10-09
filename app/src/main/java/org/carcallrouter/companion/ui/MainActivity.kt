@@ -624,7 +624,7 @@ class MainActivity : Activity() {
                             "source=user_report; target=${RouterLog.deviceId(target)}; " +
                                 "speaker=${answers[0]}; microphone=${answers[1]}; " +
                                 "aa_navigation=${answers[2]}; aa_media_resumed=${answers[3]}; " +
-                                "startedAt=$startedAt; sessionAtStart=${sessionAtStart ?: "NONE"}; " +
+                                "startedAt=$startedAt; sessionAtStart=$sessionAtStart; " +
                                 "sessionAtEnd=${settings.lastSession?.completedAt ?: "NONE"}; " +
                                 "physical_audio_automatically_verified=false; universal_qualification=false",
                         )
