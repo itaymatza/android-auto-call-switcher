@@ -72,7 +72,7 @@ class AddressedTelecomRouter(
         return try {
             service.currentCallEndpoint
                 .takeIf { endpoint ->
-                    !availableSnapshotReceived || available.any { it.identifier == endpoint.identifier }
+                    availableSnapshotReceived && available.any { it.identifier == endpoint.identifier }
                 }?.also { current = it }
         } catch (_: RuntimeException) {
             null
@@ -136,9 +136,15 @@ class AddressedTelecomRouter(
         )
     }
 
-    fun clearSession() {
+    fun clearSession(clearEndpoints: Boolean = false) {
         ownRequests.clear()
         generation++
+        if (clearEndpoints) {
+            available = emptyList()
+            availableSnapshotReceived = false
+            availableRevision = 0L
+            current = null
+        }
     }
 
     fun generation(): Long = generation

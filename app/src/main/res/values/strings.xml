@@ -126,6 +126,6 @@
     <string name="test_fail">No — checked and failed</string>
     <string name="test_not_checked">Not checked / unsure</string>
     <string name="parked_test_saved">Observations recorded in the redacted log. Export it with your test report.</string>
-    <string name="parked_test_changed">Call-device configuration changed. Start a new test report for this setup.</string>
+    <string name="parked_test_changed">The call or device configuration changed, or no completed call is available. Finish a parked test call and start a new report.</string>
     <string name="authorization_checking">Checking call-routing access…</string>
 </resources>

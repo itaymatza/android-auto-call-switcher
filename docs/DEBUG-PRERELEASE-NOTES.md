@@ -25,7 +25,19 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.17
+## What changed in beta.18
+
+- Clear endpoint objects between calls and invalidate old request results when an explicit manual transaction starts.
+- Preserve unfinished dialing requests through temporary evidence loss at answer; block overlapping Route now attempts.
+- Protect resolved third-device Bluetooth changes and API 37 handset/speaker/wired/third-device requests.
+- Treat multiple simultaneous reported HFP owners as ambiguous, never as verified target audio or safe selector recovery.
+- Move process, power and previous-exit diagnostics off application/call-start callbacks; cache only bounded-age observations.
+- Read paired-device names off the setup UI thread with a bounded timeout; discard results after leaving the screen.
+- Persist incomplete observation when Telecom unbinds mid-call and reject parked reports spanning different calls.
+- Stage releases as drafts, verify downloaded APK/digest/report consistency before publication, and preserve published assets on retry.
+- Validate signed release tags against source versions, exclude commit-specific debug tags and keep beta releases prereleases.
+
+## Earlier beta.17 behavior
 
 - Separates exact classic HFP connection/SCO evidence, device-name/alias identity and Bluetooth
   power diagnostics into independent bounded zero-queue workers. Slow optional reads cannot

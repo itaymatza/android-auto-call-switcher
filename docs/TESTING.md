@@ -1,5 +1,9 @@
 # Testing guidance
 
+The host CI matrix sets `-PTEST_JAVA_VERSION=17` or `21` to select the actual test JVM,
+independently of the Java 17 compilation toolchain. Each test task logs its runtime version.
+Local runs default to JDK 17; testing on JDK 21 requires that JDK to be installed.
+
 ## Deterministic host-JVM suites
 
 Install a JDK 17 or newer and a Kotlin compiler, then run:

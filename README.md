@@ -63,8 +63,10 @@ the [compatibility guide](docs/DEVICE-COMPATIBILITY.md) and [FAQ](docs/FAQ.md) b
 
 ## Project status
 
-The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.17` requests the selected call device during outgoing dialing and revalidates at answer, with a maximum of two automatic target requests per call. It samples HFP ownership throughout active calls and records call-relative timing, observation gaps, and user-reported wrong audio. Incoming calls retain answer-time routing. Protected call eligibility, authorization and projection-provider reads now run off-thread, and pending or delayed evidence cannot authorize a request. Audio-mode checks and optional device inventories have separate bounded workers and independent freshness. Exact HFP audio, live identity labels and power diagnostics are also isolated; Bluetooth change events invalidate old reads. Multiple-device endpoint matching uses fresh live labels rather than saved names. Seamless physical audio remains subject to device qualification; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
+The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.18` requests the selected call device during outgoing dialing and revalidates at answer, with a maximum of two automatic target requests per call. It samples HFP ownership throughout active calls and records call-relative timing, observation gaps, and user-reported wrong audio. Incoming calls retain answer-time routing. Protected call eligibility, authorization and projection-provider reads now run off-thread, and pending or delayed evidence cannot authorize a request. Audio-mode checks and optional device inventories have separate bounded workers and independent freshness. Exact HFP audio, live identity labels and power diagnostics are also isolated; Bluetooth change events invalidate old reads. Multiple-device endpoint matching uses fresh live labels rather than saved names. Seamless physical audio remains subject to device qualification; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
 
+
+Beta.18 fixes cross-call endpoint reuse, callback isolation for manual retries, manual Bluetooth override protection, and ambiguous HFP ownership. It also bounds the setup device lookup and verifies release assets before publication. See the [fresh review](docs/REVIEW-2026-10-09.md) for evidence and remaining limits.
 
 ## Public-repository posture
 
@@ -87,13 +89,13 @@ The source namespace is the generic value `org.carcallrouter.companion`. Overrid
 ```sh
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
-  -PAPP_VERSION_CODE=19 \
-  -PAPP_VERSION_NAME=0.3.0-beta.17 \
+  -PAPP_VERSION_CODE=20 \
+  -PAPP_VERSION_NAME=0.3.0-beta.18 \
   :app:assembleDebug
 ```
 
 
-`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `19`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.17`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
+`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `20`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.18`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
 
 
 ### Runtime configuration
@@ -119,7 +121,7 @@ account is not required just to download the APK.
 
 | Version | Channel | Downloads |
 | --- | --- | --- |
-| `0.3.0-beta.17` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
+| `0.3.0-beta.18` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
 | `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.10-debug) |
 | `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.9-debug) |
 | `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.7-debug) |
@@ -132,12 +134,12 @@ A new debug APK is published for each successful push to `main` on the [Releases
 
 The easiest path is the durable direct download:
 
-1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.17` debug pre-release.
+1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.18` debug pre-release.
 2. Open the downloaded APK on the Android device.
 3. If Android prompts you, temporarily allow **Install unknown apps** for the browser or file
    manager, install the APK, and then disable that permission again.
 
-If Android reports that the package cannot be updated or is incompatible with the installed version, uninstall the existing build first and retry. Uninstalling clears the app's local configuration.
+For updates, use the newest protected-key APK and install it over the existing app. If Android rejects the update, compare the installed version and signing channel with the release notes first. Uninstall only when migrating from the documented older temporary-key builds or another signing channel; uninstalling clears settings and the ADB grant.
 
 > This is a durable debug/test pre-release for Android 14+, not a production-ready signed release.
 > Installation alone does not grant protected Telecom access. Open the app and complete the
@@ -167,8 +169,8 @@ certificate across hosted runners; the signed workflow also pins the expected ce
 ## Project documentation
 
 
-See the [product completeness audit](docs/PRODUCT-COMPLETENESS.md) for remaining functionality,
-real-device qualification, and repository rename work.
+See the [product completeness audit](docs/PRODUCT-COMPLETENESS.md) for remaining functionality and
+real-device qualification. Repository branding and canonical links are aligned.
 
 Start with the [FAQ](docs/FAQ.md) and [compatibility guide](docs/DEVICE-COMPATIBILITY.md). Read the
 [architecture reference](docs/ARCHITECTURE.md) for the component boundaries and routing state
@@ -183,10 +185,10 @@ in the private reporting path described by [SECURITY.md](SECURITY.md), not a pub
 ## Safety model and limitations
 
 
-The policy fails closed. It requires Telecom authorization, runtime permissions, a verifiably SIM-backed non-emergency call, a single active call, a configured target present in both Telecom and HFP state, and—when using automatic mode—a verified projection-host state. Evidence may arrive for up to ten seconds. Call-start routing settles for at least 300 ms, with recent activity extending the wait up to 900 ms. The app makes at most one target request per dialing/answer phase (two automatic target requests per call at most) and allows four seconds for exact target HFP/SCO confirmation; it never retries or reasserts the target within that phase. If that window ends in the exact observed split state—Telecom displays the target while the explicitly configured competing endpoint still owns SCO—the app may make one additional, bounded request to display that already-active competing endpoint so the target becomes manually selectable again. Without that configured device, recovery is unavailable because the app cannot safely guess which of several HFP devices owns Android Auto audio. Observed handset, speaker, and wired route callbacks stop a pending automatic guard. Other-Bluetooth routes stop selector recovery; request callbacks alone cannot distinguish an Android Auto startup action from a user choice. An already-submitted platform request cannot be recalled. The explicit manual one-shot bypasses only the automatic toggle and projection gate; it does not bypass authorization, identity, device-presence, or emergency safeguards.
+The policy fails closed. It requires Telecom authorization, runtime permissions, a verifiably SIM-backed non-emergency call, a single active call, a configured target present in both Telecom and HFP state, and—when using automatic mode—a verified projection-host state. Evidence may arrive for up to ten seconds. Call-start routing settles for at least 300 ms, with recent activity extending the wait up to 900 ms. The app makes at most one target request per dialing/answer phase (two automatic target requests per call at most) and allows four seconds for exact target HFP/SCO confirmation; it never retries or reasserts the target within that phase. If that window ends in the exact observed split state—Telecom displays the target while the explicitly configured competing endpoint still owns SCO—the app may make one additional, bounded request to display that already-active competing endpoint so the target becomes manually selectable again. Without that configured device, recovery is unavailable because the app cannot safely guess which of several HFP devices owns Android Auto audio. Observed handset, speaker, wired, and resolved changes to a third Bluetooth device stop pending automation. API 37 protected endpoint requests are honored even before their route callback; request callbacks alone cannot distinguish an Android Auto startup action from a user choice. An already-submitted platform request cannot be recalled. The explicit manual one-shot bypasses only the automatic toggle and projection gate; it does not bypass authorization, identity, device-presence, or emergency safeguards.
 
 
-Routing uses API 34+ `requestCallEndpointChange()` with an endpoint object from the latest `onAvailableCallEndpointsChanged()` callback. The deprecated `requestBluetoothAudio(BluetoothDevice)` path has been removed. Because the public endpoint API exposes a name and UUID but no Bluetooth address, the app resolves identity only when the selected device’s current name or alias uniquely matches a live Bluetooth endpoint without a connected peer-name conflict (falling back to the saved name when live labels are unavailable), or when exactly one HFP device and one Bluetooth endpoint exist. Ambiguity fails closed. Endpoint UUIDs are not persisted.
+Routing uses API 34+ `requestCallEndpointChange()` with an endpoint object from the latest `onAvailableCallEndpointsChanged()` callback. The deprecated `requestBluetoothAudio(BluetoothDevice)` path has been removed. Because the public endpoint API exposes a name and UUID but no Bluetooth address, the app resolves identity only when the selected device’s current name or alias uniquely matches a live Bluetooth endpoint without a connected peer-name conflict or when exactly one HFP device and one Bluetooth endpoint exist. Ambiguity fails closed. Endpoint UUIDs are not persisted.
 
 Diagnostics deliberately distinguish `TELECOM_ENDPOINT_CONFIRMED` from
 `TARGET_HFP_AUDIO_CONFIRMED`. The former means Telecom selected the intended endpoint object; the

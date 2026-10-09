@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0-beta.18
+
+- Clear endpoint objects between calls and invalidate old request results when an explicit manual transaction starts.
+- Preserve unfinished dialing requests through temporary evidence loss at answer; block overlapping Route now attempts.
+- Protect resolved third-device Bluetooth changes and API 37 handset/speaker/wired/third-device requests.
+- Treat multiple simultaneous reported HFP owners as ambiguous, never as verified target audio or safe selector recovery.
+- Move process, power and previous-exit diagnostics off application/call-start callbacks; cache only bounded-age observations.
+- Read paired-device names off the setup UI thread with a bounded timeout; discard results after leaving the screen.
+- Persist incomplete observation when Telecom unbinds mid-call and reject parked reports spanning different calls.
+- Stage releases as drafts, verify downloaded APK/digest/report consistency before publication, and preserve published assets on retry.
+- Validate signed release tags against source versions, exclude commit-specific debug tags and keep beta releases prereleases.
+
 ## 0.3.0-beta.14
 
 - Request the selected Bluetooth device during outgoing dialing; revalidate at answer with no overlapping request and at most two automatic target requests per call. Preserve explicit route choices.

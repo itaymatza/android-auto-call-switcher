@@ -25,6 +25,8 @@ not a claim of universal compatibility or production readiness.
 | API 37 request callback | Actual override compiled against stable API 37.0; host callback-order tests | Validate dispatch on Android 17; compilation and host tests do not prove platform dispatch. |
 | Production claim | Beta only | Complete the unchanged-APK stability matrix, classify failures and verify signed non-debuggable release. |
 
+The [fresh beta.18 review](REVIEW-2026-10-09.md) records additional session isolation, manual-control, setup, diagnostics and publication fixes, with regression evidence.
+
 ## Remaining engineering and qualification work
 
 External integration and physical gates are tracked in [issue #76](https://github.com/itaymatza/android-auto-call-switcher/issues/76).

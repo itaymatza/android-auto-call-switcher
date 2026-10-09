@@ -83,6 +83,8 @@ class BluetoothManager {
 }
 
 class BluetoothAdapter {
+    var readBonded: () -> Set<BluetoothDevice> = { emptySet() }
+    val bondedDevices get() = readBonded()
     var powerState = 12
     var readState: () -> Int = { powerState }
     val state get() = readState()

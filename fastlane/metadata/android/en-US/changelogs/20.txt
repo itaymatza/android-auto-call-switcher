@@ -1,0 +1,2 @@
+Version 0.3.0-beta.18
+Fix call/session isolation and manual Bluetooth overrides; reject ambiguous audio evidence. Bound device lookup, improve incomplete-call diagnostics and harden release verification. Physical device qualification remains required.

@@ -122,6 +122,10 @@ class RoutingPolicy(
     var verified = false
         private set
 
+    /** Missing evidence can move a submitted transaction back to WAITING without ending it. */
+    val hasUnfinishedRequest: Boolean
+        get() = requests > 0 && phase !in terminalPhases
+
     private var manual = false
     private var evidenceDeadline = 0L
     private var settleUntil = 0L
@@ -173,7 +177,7 @@ class RoutingPolicy(
         initial: Route,
     ) {
         if (phase == Phase.SUSPENDED) return
-        if (requests > 0 && phase in setOf(Phase.VERIFYING, Phase.STABILIZING)) {
+        if (hasUnfinishedRequest) {
             actionDeadline = now + actionWindowMs
             targetAudioSince = null
             lastPositiveSampleAt = null

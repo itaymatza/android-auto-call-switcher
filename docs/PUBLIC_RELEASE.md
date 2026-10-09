@@ -35,7 +35,7 @@ For a full Android verification where an Android SDK is available, run:
 bash gradlew :app:assembleDebug :app:testDebugUnitTest :verification:service-tests:run \
   :app:lintDebug --stacktrace --console=plain
 bash tools/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk \
-  org.carcallrouter.companion 19 0.3.0-beta.17 34 36 true
+  org.carcallrouter.companion 20 0.3.0-beta.18 34 36 true
 ```
 
 The APK verifier fails closed on a signature error, unexpected package or version, SDK drift,

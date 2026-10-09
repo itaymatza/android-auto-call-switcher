@@ -474,7 +474,7 @@ class RouterInCallService :
             outgoingDialingPhase = false
             activeTransitionAt = SystemClock.elapsedRealtime()
             // Invalidate dialing callbacks before resetting its request counter at answer.
-            if (policy.phase !in setOf(RoutingPolicy.Phase.VERIFYING, RoutingPolicy.Phase.STABILIZING)) router.clearSession()
+            if (!policy.hasUnfinishedRequest) router.clearSession()
             policy.answer(requireNotNull(activeTransitionAt), currentRoute())
             trace.event("ANSWER_VERIFICATION_STARTED", "prior_requests" to totalAutomaticRequests)
             hfp.refresh("answer_verification")
@@ -568,7 +568,7 @@ class RouterInCallService :
                     },
                 )
             }
-            router.clearSession()
+            router.clearSession(clearEndpoints = true)
             policy = RoutingPolicy()
             lastTracePolicy = null
             lastTraceEvidence = null
@@ -637,11 +637,17 @@ class RouterInCallService :
         router.updateCurrent(callEndpoint)
         lastEndpointId = callEndpoint.identifier.toString()
         val route = currentRoute()
+        val otherBluetoothChoice =
+            route == RoutingPolicy.Route.OTHER_BLUETOOTH &&
+                previousId != null &&
+                previousId != lastEndpointId &&
+                targetEndpoint().endpoint != null &&
+                (settings.competitorAddress != null || policy.requests > 0 || previousRoute == RoutingPolicy.Route.TARGET)
         if (
             sessionStarted &&
             !manualSession &&
             (outgoingDialingPhase || policy.phase !in RoutingPolicy.terminalPhases) &&
-            route in DEFINITE_USER_OWNED_ROUTES
+            (route in DEFINITE_USER_OWNED_ROUTES || otherBluetoothChoice)
         ) {
             suspendSessionFromEvent(
                 "Protected route observed during automatic routing; respecting possible user choice",
@@ -738,9 +744,23 @@ class RouterInCallService :
         // Call-start requests extend only the short quiet period. Once our request has been sent,
         // another service's request suppresses selector recovery, without stopping HFP verification.
         if (observation.origin == AddressedTelecomRouter.RequestOrigin.EXTERNAL && sessionStarted) {
-            if (outgoingDialingPhase && totalAutomaticRequests > 0 && !matchesTarget) {
+            val protectedRequest =
+                callEndpoint.endpointType in
+                    setOf(
+                        CallEndpoint.TYPE_EARPIECE,
+                        CallEndpoint.TYPE_SPEAKER,
+                        CallEndpoint.TYPE_WIRED_HEADSET,
+                    ) ||
+                    (
+                        callEndpoint.endpointType == CallEndpoint.TYPE_BLUETOOTH &&
+                            targetEndpoint().endpoint != null &&
+                            competitorEndpoint().endpoint != null &&
+                            !matchesTarget &&
+                            endpointId != competitorEndpoint().endpoint?.identifier?.toString()
+                    )
+            if (protectedRequest || (outgoingDialingPhase && totalAutomaticRequests > 0 && !matchesTarget)) {
                 suspendSessionFromEvent(
-                    "External route choice during dialing; answer takeover suppressed",
+                    "External protected route request; automatic takeover suppressed",
                     RoutingPolicy.ReasonCode.USER_OVERRIDE,
                 )
             }
@@ -956,6 +976,7 @@ class RouterInCallService :
             when {
                 address == null -> false
                 !hfp.known || !hfpFresh -> null
+                hfp.audioConnected.size > 1 -> null
                 else -> address in hfp.audioConnected
             }
         val competitorAddress = settings.competitorAddress?.uppercase()
@@ -963,6 +984,7 @@ class RouterInCallService :
             when {
                 competitorAddress == null -> false
                 !hfp.known || !hfpFresh -> null
+                hfp.audioConnected.size > 1 -> null
                 else -> competitorAddress in hfp.audioConnected && competitor.endpoint != null
             }
         val audioState = if (live.isNotEmpty() && (projection == true || manualSession)) audioFramework.sample(now) else null
@@ -1529,7 +1551,7 @@ class RouterInCallService :
 
     override fun routeNow() {
         val now = SystemClock.elapsedRealtime()
-        if (now < manualCooldownUntil) {
+        if (now < manualCooldownUntil || policy.hasUnfinishedRequest || (manualSession && policy.phase !in RoutingPolicy.terminalPhases)) {
             RouterLog.event("MANUAL_TEST", "A request is already within its verification window")
             return
         }
@@ -1538,6 +1560,7 @@ class RouterInCallService :
         sessionStarted = true
         manualSession = true
         beginTrace("manual", "route_now")
+        router.clearSession()
         policy.begin(now, currentRoute(), manualOneShot = true)
         confirmedAudioPresent = null
         postConfirmationDeadlineAt = null
@@ -1586,14 +1609,22 @@ class RouterInCallService :
         disposed = true
         cancelTick("service_stopped")
         finishPostConfirmationWatch("service_stopped")
-        trace.finish(
-            policy.phase,
-            policy.reasonCode,
-            "service_stopped",
-            "observation_incomplete" to records.isNotEmpty(),
-            "user_reported_wrong_audio" to userReportedWrongAudio,
-            "physical_audio_verified" to false,
-        )
+        val confirmation =
+            trace.finish(
+                policy.phase,
+                policy.reasonCode,
+                "service_stopped",
+                "observation_incomplete" to records.isNotEmpty(),
+                "user_reported_wrong_audio" to userReportedWrongAudio,
+                "physical_audio_verified" to false,
+            )
+        if (confirmation != null && records.isNotEmpty()) {
+            settings.recordLastSession(
+                policy.phase.name,
+                policy.reasonCode.name,
+                "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE",
+            )
+        }
         router.clearSession()
         handler.removeCallbacksAndMessages(null)
         records.forEach { (call, record) -> call.unregisterCallback(record.callback) }

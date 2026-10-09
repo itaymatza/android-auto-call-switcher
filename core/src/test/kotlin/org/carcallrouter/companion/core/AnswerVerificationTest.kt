@@ -28,6 +28,25 @@ class AnswerVerificationTest {
     )
 
     @Test
+    fun answerPreservesSubmittedTransactionWhileEvidenceIsUnknown() {
+        for (unknown in listOf<(RoutingPolicy.Snapshot) -> RoutingPolicy.Snapshot>(
+            { it.copy(projection = null) },
+            { it.copy(targetHfpConnected = null) },
+        )) {
+            val p = RoutingPolicy()
+            p.begin(0, RoutingPolicy.Route.COMPETING_DEVICE)
+            assertTrue(p.evaluate(snapshot(300)).requestTarget)
+            p.evaluate(unknown(snapshot(400)))
+            p.answer(500, RoutingPolicy.Route.COMPETING_DEVICE)
+            assertFalse(p.evaluate(snapshot(900)).requestTarget)
+            assertEquals(1, p.requests)
+            p.evaluate(snapshot(1000, true))
+            p.evaluate(snapshot(1300, true))
+            assertTrue(p.verified)
+        }
+    }
+
+    @Test
     fun answerExtendsPendingVerificationWithoutSubmittingAgain() {
         val p = RoutingPolicy()
         p.begin(0, RoutingPolicy.Route.COMPETING_DEVICE)

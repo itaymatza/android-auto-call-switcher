@@ -13,6 +13,12 @@ SPEC.loader.exec_module(MODULE)
 
 
 class VersionConsistencyTest(unittest.TestCase):
+    def test_release_tag_must_match_source_version(self) -> None:
+        self.assertEqual(1, MODULE.main(["--tag", "v99.0.0"]))
+        version = MODULE.capture("app/build.gradle.kts", r'gradleProperty\("APP_VERSION_NAME"\).*?\.orElse\("([^\"]+)"\)', "version")
+        self.assertEqual(0, MODULE.main(["--tag", f"v{version}"]))
+        self.assertEqual(1, MODULE.main(["--tag", f"v{version}-debug.commit"]))
+
     def test_capture_reads_expected_value(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

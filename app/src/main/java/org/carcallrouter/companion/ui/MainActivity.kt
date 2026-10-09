@@ -3,7 +3,6 @@ package org.carcallrouter.companion.ui
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
-import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -70,6 +69,8 @@ class MainActivity : Activity() {
     private var diagnosticsVisible = false
     private var monitor: ProjectionMonitor? = null
     private var preflight: CallDevicePreflight? = null
+    private var deviceQuery: PairedDeviceQuery? = null
+    private var choosingCompetitor = false
     private var authorizationMonitor: AuthorizationMonitor? = null
     private var authorizationVerificationDeadline: Long? = null
     private val main = Handler(Looper.getMainLooper())
@@ -234,6 +235,14 @@ class MainActivity : Activity() {
                 refresh()
             }.also { it.start() }
         preflight = CallDevicePreflight(this) { refresh() }.also { it.start() }
+        deviceQuery =
+            PairedDeviceQuery(this) { devices ->
+                if (devices == null) {
+                    toast("Bluetooth device lookup failed or timed out. Check Bluetooth permission and try again.")
+                } else {
+                    showDeviceChoices(devices, choosingCompetitor)
+                }
+            }
         logs.text = RouterLog.recentText()
     }
 
@@ -255,6 +264,8 @@ class MainActivity : Activity() {
         monitor = null
         preflight?.close()
         preflight = null
+        deviceQuery?.close()
+        deviceQuery = null
         super.onStop()
     }
 
@@ -601,7 +612,11 @@ class MainActivity : Activity() {
                     answers.add(values[choice])
                     if (index < questions.lastIndex) {
                         ask(index + 1)
-                    } else if (target != settings.targetAddress || competitor != settings.competitorAddress) {
+                    } else if (target != settings.targetAddress ||
+                        competitor != settings.competitorAddress ||
+                        sessionAtStart == null ||
+                        sessionAtStart != settings.lastSession?.completedAt
+                    ) {
                         toast(getString(R.string.parked_test_changed))
                     } else {
                         RouterLog.event(
@@ -609,7 +624,7 @@ class MainActivity : Activity() {
                             "source=user_report; target=${RouterLog.deviceId(target)}; " +
                                 "speaker=${answers[0]}; microphone=${answers[1]}; " +
                                 "aa_navigation=${answers[2]}; aa_media_resumed=${answers[3]}; " +
-                                "startedAt=$startedAt; sessionAtStart=${sessionAtStart ?: "NONE"}; " +
+                                "startedAt=$startedAt; sessionAtStart=$sessionAtStart; " +
                                 "sessionAtEnd=${settings.lastSession?.completedAt ?: "NONE"}; " +
                                 "physical_audio_automatically_verified=false; universal_qualification=false",
                         )
@@ -647,56 +662,59 @@ class MainActivity : Activity() {
         }
     }
 
-    @SuppressLint("MissingPermission")
     private fun chooseDevice(competing: Boolean) {
         if (!Access.bluetoothGranted(this)) {
             explainAndRequestPermissions()
             return
         }
-        try {
-            val devices =
-                getSystemService(BluetoothManager::class.java)
-                    ?.adapter
-                    ?.bondedDevices
-                    ?.filter { !competing || !it.address.equals(settings.targetAddress, true) }
-                    ?.sortedWith(compareBy({ it.name ?: "" }, { it.address }))
-                    ?: emptyList()
-            val labels =
-                devices
-                    .map {
-                        val suffix = it.address.takeLast(5)
-                        "${it.alias ?: it.name ?: "Unnamed Bluetooth device"} • $suffix"
-                    }.toMutableList()
-            if (competing) labels.add(0, getString(R.string.competitor_none))
-            if (labels.isEmpty()) {
-                toast("No paired Bluetooth devices found. Pair the car or headset in Android settings first.")
-                return
-            }
-            AlertDialog
-                .Builder(this)
-                .setTitle(if (competing) R.string.competitor_title else R.string.target_step_title)
-                .setItems(labels.toTypedArray()) { _, index ->
-                    if (competing && index == 0) {
-                        settings.setCompetitor(null, null)
-                    } else {
-                        val device = devices[index - if (competing) 1 else 0]
-                        if (competing) {
-                            settings.setCompetitor(device.address, device.alias ?: device.name ?: "Unnamed")
-                        } else {
-                            settings.setTarget(device.address, device.alias ?: device.name ?: "Unnamed")
-                        }
-                        RouterLog.event(
-                            "DEVICE_SELECTED",
-                            "role=${if (competing) "competitor" else "target"}; id=${RouterLog.deviceId(device.address)}",
-                        )
-                    }
-                    refresh()
-                }.setNegativeButton(android.R.string.cancel, null)
-                .show()
-        } catch (e: RuntimeException) {
-            RouterLog.event("DEVICE_SELECTION_ERROR", e.javaClass.simpleName)
-            toast("Bluetooth access failed. Check permission and make sure Bluetooth is on.")
+        if (deviceQuery?.load() == true) {
+            choosingCompetitor = competing
+            toast("Reading paired Bluetooth devices…")
+        } else {
+            toast("Bluetooth device lookup is already running.")
         }
+    }
+
+    private fun showDeviceChoices(
+        paired: List<PairedDeviceQuery.Device>,
+        competing: Boolean,
+    ) {
+        val devices = paired.filter { !competing || !it.address.equals(settings.targetAddress, true) }
+        val labels = devices.map { "${it.label} • ${it.address.takeLast(5)}" }.toMutableList()
+        if (competing) labels.add(0, getString(R.string.competitor_none))
+        if (labels.isEmpty()) {
+            toast("No paired Bluetooth devices found. Pair the car or headset in Android settings first.")
+            return
+        }
+        AlertDialog
+            .Builder(this)
+            .setTitle(if (competing) R.string.competitor_title else R.string.target_step_title)
+            .setItems(labels.toTypedArray()) { _, index ->
+                if (!Access.bluetoothGranted(this)) {
+                    explainAndRequestPermissions()
+                    return@setItems
+                }
+                if (competing && index == 0) {
+                    settings.setCompetitor(null, null)
+                } else {
+                    val device = devices[index - if (competing) 1 else 0]
+                    if (competing) {
+                        if (device.address.equals(settings.targetAddress, true)) {
+                            toast("Choose a different device from the selected call device.")
+                            return@setItems
+                        }
+                        settings.setCompetitor(device.address, device.label)
+                    } else {
+                        settings.setTarget(device.address, device.label)
+                    }
+                    RouterLog.event(
+                        "DEVICE_SELECTED",
+                        "role=${if (competing) "competitor" else "target"}; id=${RouterLog.deviceId(device.address)}",
+                    )
+                }
+                refresh()
+            }.setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun button(

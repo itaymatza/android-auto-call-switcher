@@ -6,6 +6,7 @@ on:
     tags:
       - 'v*'
       - '!v*-debug'
+      - '!v*-debug.*'
 
 permissions:
   contents: write
@@ -24,6 +25,12 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+      - name: Validate source version, tag and host tools
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          python3 tools/check_version_consistency.py --tag "$RELEASE_TAG"
+          python3 -m unittest discover -s tools/tests -p 'test_*.py'
       - name: Require protected signing secrets
         env:
           BETA_KEYSTORE_BASE64: ${{ secrets.BETA_KEYSTORE_BASE64 }}
@@ -70,9 +77,9 @@ jobs:
         run: >-
           bash tools/verify-apk.sh
           app/build/outputs/apk/release/app-release.apk
-          org.carcallrouter.companion 19 0.3.0-beta.17 34 36 false
+          org.carcallrouter.companion 20 0.3.0-beta.18 34 36 false
       - name: Compute APK digest
-        run: sha256sum app/build/outputs/apk/release/app-release.apk > app-release.apk.sha256
+        run: (cd app/build/outputs/apk/release && sha256sum app-release.apk) > app-release.apk.sha256
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: app/build/outputs/apk/release/app-release.apk
@@ -94,7 +101,7 @@ jobs:
           app/build/outputs/apk/release/app-release.apk
           app-release.apk.sha256
           verification/current/apk-release-verification.txt
-          --verify-tag --generate-notes
+          --verify-tag --generate-notes --prerelease
       - name: Remove ephemeral keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/car-call-router-beta.jks"
