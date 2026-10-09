@@ -217,7 +217,10 @@ and working, checked and failed, or not checked. Confirm microphone input with t
 party while separating the phone and target microphone; merely seeing a selected route is not
 a microphone test. Media may pause normally during a call; test resumption after it ends.
 Export the redacted log. `USER_PARKED_TEST` is operator evidence, separate from automatic HFP
-confirmation, and does not automatically pass the capture/qualification tools.
+confirmation, and does not automatically pass the capture/qualification tools. Complete the optional in-app
+report before ending capture. `parked-reports.json` retains the separate report summary; any
+failed, unchecked, or malformed new report vetoes a passing run even if command-line
+observations say yes. Existing captures without in-app reports retain their operator gates.
 
 The foreground compatibility check reports connection observations only. Verify classic-only,
 dual-transport, LE-only and hearing-aid devices, Bluetooth off, permission revocation, return

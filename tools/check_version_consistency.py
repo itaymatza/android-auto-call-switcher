@@ -61,10 +61,11 @@ def main() -> int:
             f"BASE_VERSION_CODE: '{version_code}'",
             f"BASE_VERSION_NAME: {version_name}",
             'echo "RELEASE_TAG=v${BASE_VERSION_NAME}-debug.${short_sha}"',
-            'echo "APK_NAME=car-call-router-${BASE_VERSION_NAME}-debug.${short_sha}.apk"',
+            'echo "APK_NAME=android-auto-call-switcher-${BASE_VERSION_NAME}-debug.${short_sha}.apk"',
         ],
         ".github/workflows/release.yml": [
-            f"org.carcallrouter.companion {version_code} {version_name} 34 36 false"
+            f"org.carcallrouter.companion {version_code} {version_name} 34 36 false",
+            "name: android-auto-call-switcher-signed-beta"
         ],
         "docs/DEBUG-PRERELEASE-NOTES.md": ["the `.apk` attached to this release"],
         "app/src/main/AndroidManifest.xml": [
@@ -78,6 +79,7 @@ def main() -> int:
             '<string name="app_name">Android Auto Call Switcher</string>',
             "https://github.com/itaymatza/car-call-router/releases",
         ],
+        "docs/assets/social-preview.svg": ["Android Auto Call Switcher"],
         "fastlane/metadata/android/en-US/title.txt": ["Android Auto Call Switcher"],
         f"fastlane/metadata/android/en-US/changelogs/{version_code}.txt": [
             f"Version {version_name}",

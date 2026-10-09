@@ -39,7 +39,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
       - name: Test policy, service callback, trace, and capture contracts
         run: |
-          python3 -m unittest tools.tests.test_analyze_device_trace tools.tests.test_capture_device_run tools.tests.test_extract_new_app_events
+          python3 -m unittest tools.tests.test_analyze_device_trace tools.tests.test_analyze_parked_reports tools.tests.test_capture_device_run tools.tests.test_extract_new_app_events
           bash gradlew :core:test :verification:service-tests:test --stacktrace --console=plain
 
   build:
@@ -90,7 +90,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: car-call-router-debug-apk
+          name: android-auto-call-switcher-debug-apk
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             verification/current/apk-verification.txt
@@ -158,7 +158,7 @@ jobs:
           echo "VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
           echo "VERSION_NAME=${BASE_VERSION_NAME}.${short_sha}" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v${BASE_VERSION_NAME}-debug.${short_sha}" >> "$GITHUB_ENV"
-          echo "APK_NAME=car-call-router-${BASE_VERSION_NAME}-debug.${short_sha}.apk" >> "$GITHUB_ENV"
+          echo "APK_NAME=android-auto-call-switcher-${BASE_VERSION_NAME}-debug.${short_sha}.apk" >> "$GITHUB_ENV"
       - name: Materialize temporary signing keystore
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}

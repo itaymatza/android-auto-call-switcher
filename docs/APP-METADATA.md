@@ -1,8 +1,9 @@
 # App metadata
 
 The installed application, release titles, and reusable store listing use the product identity
-**Android Auto Call Switcher**. Repository URLs and package identity retain `car-call-router` and
-`org.carcallrouter.companion` for upgrade and link continuity. The app is an independent utility.
+**Android Auto Call Switcher**. Repository rename/link migration to `android-auto-call-switcher` is pending admin Settings access.
+The package remains `org.carcallrouter.companion` for in-place update continuity.
+See [the completeness audit](PRODUCT-COMPLETENESS.md) for the full migration checklist. The app is an independent utility.
 
 | Surface | Source of truth |
 | --- | --- |

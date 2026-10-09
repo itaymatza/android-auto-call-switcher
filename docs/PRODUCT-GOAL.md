@@ -24,7 +24,7 @@ framework doubles; they do not certify physical Bluetooth audio. Android build, 
 APK manifest/signature verification, and tooling checks are required before publication.
 
 Local validation on 2026-10-09: 83 core JUnit tests, 101 deterministic service scenarios, 10 app
-unit tests, and 45 Python tooling tests passed. The core and service coverage gates passed. The
+unit tests, and 50 Python tooling tests passed. The core and service coverage gates passed. The
 Android debug APK assembled; Kotlin style checks, Android lint, and APK signature/manifest checks
 passed. No real-device LE Audio, VoIP, microphone, speaker, or AA media-continuity qualification
 was performed by these host checks.
@@ -46,9 +46,14 @@ started, uses a bounded single-flight worker, and expires old observations.
 afterward. Each answer is PASS, FAIL, or NOT_CHECKED. Canceling drops an incomplete report;
 changing device configuration drops it too. Completed reports enter the redacted log as
 `USER_PARKED_TEST` with `source=user_report` and session timestamps. They never upgrade an
-automatic HFP result or qualification-tool verdict. Export the report alongside a captured run
+automatic HFP result or qualification-tool verdict. The capture harness separately parses the
+new reports: any FAIL, NOT_CHECKED, malformed value, or unsupported proof claim vetoes a passing
+run. The operator and route-evidence gates still apply; absent reports preserve the older flow. Export the report alongside a captured run
 and explicitly complete the existing operator observations. A passing report applies to that
 test only, not every phone, transport, or future call.
+
+The broader naming, release, installation, and feature audit is tracked in
+[PRODUCT-COMPLETENESS.md](PRODUCT-COMPLETENESS.md).
 
 ## Remaining product gaps
 

@@ -52,6 +52,9 @@ elif args[:4] == ["exec-out", "run-as", "org.carcallrouter.companion", "cat"]:
         event("new", 6, 40, "TELECOM_ENDPOINT_CONFIRMED")
         event("new", 7, 60, "TARGET_HFP_AUDIO_CONFIRMED")
         event("new", 8, 70, "SESSION_FINISHED", "phase=SUCCEEDED reason=TARGET_VERIFIED termination=call_removed best_confirmation=TARGET_HFP_AUDIO")
+        if os.environ.get("FAKE_PARKED_ANSWER"):
+            answer = os.environ["FAKE_PARKED_ANSWER"]
+            print(f"2026-09-19T12:00:02Z +1ms USER_PARKED_TEST source=user_report; speaker={answer}; microphone=PASS; aa_navigation=PASS; aa_media_resumed=PASS; physical_audio_automatically_verified=false; universal_qualification=false")
 elif args[:3] == ["shell", "getprop", "ro.product.manufacturer"]:
     print("Samsung")
 elif args[:3] == ["shell", "getprop", "ro.product.model"]:
@@ -89,6 +92,14 @@ class CaptureDeviceRunTest(unittest.TestCase):
         self.assertIn("exactly one override-* tag", completed.stderr)
 
     def test_pass_record_contains_only_new_session(self):
+        self.check_capture(None, "PASS")
+
+    def test_parked_report_veto_cannot_be_overridden_by_operator_yes(self):
+        for answer, verdict in [("FAIL", "FAIL"), ("NOT_CHECKED", "FAIL"), ("PASS", "PASS")]:
+            with self.subTest(answer=answer):
+                self.check_capture(answer, verdict)
+
+    def check_capture(self, answer, verdict):
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
             adb = temporary / "adb"
@@ -98,6 +109,9 @@ class CaptureDeviceRunTest(unittest.TestCase):
             environment = os.environ.copy()
             environment["PATH"] = f"{temporary}:{environment['PATH']}"
             environment["FAKE_ADB_STATE"] = str(temporary / "state")
+            environment.pop("FAKE_PARKED_ANSWER", None)
+            if answer is not None:
+                environment["FAKE_PARKED_ANSWER"] = answer
             completed = subprocess.run(
                 ["bash", str(SCRIPT), "--serial", "FAKE", "--scenario", "outgoing",
                  "--tag", "cold-start", "--tag", "android-auto-first",
@@ -116,7 +130,8 @@ class CaptureDeviceRunTest(unittest.TestCase):
             self.assertIn("HFP_QUERY_TIMING elapsedMs=3", app_events)
             self.assertIn("session=new", app_events)
             self.assertNotIn("session=old", app_events)
-            self.assertEqual("verdict=PASS", (output / "verdict.txt").read_text().splitlines()[0])
+            self.assertEqual("verdict=" + verdict, (output / "verdict.txt").read_text().splitlines()[0])
+            self.assertTrue((output / "parked-reports.json").exists())
             device = (output / "device.txt").read_text(encoding="utf-8")
             self.assertIn("build_fingerprint=samsung/test/test:17/TEST/1:user/release-keys", device)
             self.assertIn("security_patch=2026-09-01", device)
