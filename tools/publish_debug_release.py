@@ -6,12 +6,18 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 
 def run(*args: str) -> str:
-    return subprocess.run(args, check=True, text=True, capture_output=True).stdout
+    try:
+        return subprocess.run(args, check=True, text=True, capture_output=True).stdout
+    except subprocess.CalledProcessError as error:
+        if error.stderr:
+            print(error.stderr, file=sys.stderr, end="")
+        raise
 
 
 def verify_assets(directory: Path, apk_name: str, expected: dict | None = None) -> dict:
@@ -57,12 +63,15 @@ def publish(repo: str, tag: str, sha: str, apk: Path, notes: Path, execute=run) 
     identity = verify_assets(apk.parent, apk.name)
     release = find_release(repo, tag, execute)
     if release is None:
-        execute("gh", "release", "create", tag, "--repo", repo, "--target", sha,
-                "--draft", "--prerelease", "--title",
-                f"Android Auto Call Switcher {identity['version_name']} (debug beta)", "--notes-file", str(notes))
-        release = find_release(repo, tag, execute)
-    if release is None:
-        raise ValueError("Created draft is not visible; refusing to publish")
+        # The draft can be absent from an immediately repeated listing. Use the
+        # authoritative create response instead of rediscovering our own mutation.
+        release = json.loads(execute(
+            "gh", "api", f"repos/{repo}/releases", "--method", "POST",
+            "-f", f"tag_name={tag}", "-f", f"target_commitish={sha}",
+            "-F", "draft=true", "-F", "prerelease=true",
+            "-f", f"name=Android Auto Call Switcher {identity['version_name']} (debug beta)",
+            "-f", f"body={notes.read_text()}",
+        ))
     if release["target_commitish"] != sha or not release["prerelease"]:
         raise ValueError("Existing release has unexpected source commit or channel")
     names = (apk.name, f"{apk.name}.sha256", "apk-verification.txt")
