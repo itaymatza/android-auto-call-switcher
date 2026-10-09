@@ -38,7 +38,7 @@ jobs:
           test -n "$BETA_KEY_PASSWORD"
           test -n "$BETA_SIGNING_CERT_SHA256"
       - name: Install SDK packages
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
       - name: Materialize ephemeral signing keystore
         env:
           BETA_KEYSTORE_BASE64: ${{ secrets.BETA_KEYSTORE_BASE64 }}
@@ -70,7 +70,7 @@ jobs:
         run: >-
           bash tools/verify-apk.sh
           app/build/outputs/apk/release/app-release.apk
-          org.carcallrouter.companion 16 0.3.0-beta.14 34 36 false
+          org.carcallrouter.companion 17 0.3.0-beta.15 34 36 false
       - name: Compute APK digest
         run: sha256sum app/build/outputs/apk/release/app-release.apk > app-release.apk.sha256
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8

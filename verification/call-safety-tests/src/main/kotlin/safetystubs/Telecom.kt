@@ -41,6 +41,16 @@ class PhoneAccount(
 }
 
 class TelecomManager {
+    var authorized = true
+    var authorizationQueries = 0
+    var authorizationFailure: RuntimeException? = null
+
+    fun hasManageOngoingCallsPermission(): Boolean {
+        authorizationQueries++
+        authorizationFailure?.let { throw it }
+        return authorized
+    }
+
     var queries = 0
     var account: PhoneAccount? = PhoneAccount(PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION)
     var failure: RuntimeException? = null

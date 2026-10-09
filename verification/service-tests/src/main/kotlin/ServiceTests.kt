@@ -13,6 +13,7 @@ import org.carcallrouter.companion.RouterSettings
 import org.carcallrouter.companion.SessionBridge
 import org.carcallrouter.companion.telecom.AddressedTelecomRouter
 import org.carcallrouter.companion.telecom.AudioFrameworkProbe
+import org.carcallrouter.companion.telecom.CellularClassifier
 import org.carcallrouter.companion.telecom.HfpMonitor
 import org.carcallrouter.companion.telecom.RouterInCallService
 import java.io.File
@@ -45,6 +46,8 @@ private fun reset() {
     RouterLog.events.clear()
     ProjectionMonitor.instances.clear()
     ProjectionMonitor.current = true
+    CellularClassifier.pending = false
+    CellularClassifier.instances.clear()
     HfpMonitor.instances.clear()
     HfpMonitor.labels = emptyMap()
     HfpMonitor.queryDelayMs = 0L
@@ -1291,27 +1294,16 @@ fun main(args: Array<String>) {
                     check(RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=SESSION_STARTED" in it.second } == starts)
                 }
             },
-            "authorization_stall_is_attributed_separately_from_timer_deadline" to {
+            "authorization_probe_stall_does_not_block_evaluation_or_authorize_routing" to {
                 Fixture().use { f ->
                     f.activateWithoutSettling()
                     Access.queryDelayMs = 24_400
-                    f.service.reportWrongAudio()
-                    f.flush()
-                    Access.queryDelayMs = 0
-                    check(
-                        RouterLog.events.any {
-                            it.first == "ROUTING_TRACE" &&
-                                "event=OPERATION_FINISHED" in it.second &&
-                                "operation=authorization" in it.second &&
-                                "duration_ms=24400" in it.second
-                        },
-                    )
-                    check(
-                        RouterLog.events.any {
-                            it.first == "ROUTING_TRACE" && "event=EVALUATION_TIMING" in it.second && "duration_ms=24400" in it.second
-                        },
-                    )
+                    f.endpoints(listOf(target, competing, other))
+                    check("AUTHORIZATION_UNKNOWN" in SessionBridge.status)
+                    check(RouterLog.events.none { "duration_ms=24400" in it.second })
+                    TestQueue.advanceTo(10_000)
                     countEquals(f, 0)
+                    check("EVIDENCE_DEADLINE_EXPIRED" in SessionBridge.status)
                 }
             },
             "early_routing_then_answer_keeps_one_request_if_audio_stays_bmw" to {
@@ -1487,6 +1479,38 @@ fun main(args: Array<String>) {
                     f.service.onCallEndpointRequested(target)
                     f.flush()
                     check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "since_answer_ms=0" in it.second })
+                }
+            },
+            "pending_call_safety_waits_then_routes_after_completion" to {
+                Fixture().use { f ->
+                    CellularClassifier.pending = true
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    check("WAITING_CALL_SAFETY" in SessionBridge.status)
+                    CellularClassifier.complete()
+                    f.flush()
+                    countEquals(f, 1)
+                }
+            },
+            "pending_call_safety_times_out_without_endpoint_request" to {
+                Fixture().use { f ->
+                    CellularClassifier.pending = true
+                    f.activateAndSettle()
+                    TestQueue.advanceTo(10_000)
+                    countEquals(f, 0)
+                    check("EVIDENCE_DEADLINE_EXPIRED" in SessionBridge.status)
+                }
+            },
+            "late_bind_pending_safety_retains_its_evidence_window" to {
+                Fixture(initialState = Call.STATE_ACTIVE, projected = null).use { f ->
+                    CellularClassifier.pending = true
+                    ProjectionMonitor.emit(true)
+                    f.flush()
+                    countEquals(f, 0)
+                    CellularClassifier.complete()
+                    f.flush()
+                    f.settle()
+                    countEquals(f, 1)
                 }
             },
             "late_service_shutdown_marks_observation_incomplete" to {

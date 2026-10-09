@@ -145,7 +145,7 @@ class RoutingEvidenceMatrixTest {
         audio: Boolean?,
         available: Boolean?,
         route: Route,
-    ) = Snapshot(0, enabled, authorized, active, singleCall, safe, projection, hfp, audio, 0, false, available, 1, route)
+    ) = Snapshot(0, enabled, authorized, active, singleCall, safe, false, projection, hfp, audio, 0, false, available, 1, route)
 
     private fun snapshotLabel(
         enabled: Boolean,

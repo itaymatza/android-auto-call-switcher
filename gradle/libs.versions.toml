@@ -1,7 +1,7 @@
 [versions]
-agp = "8.13.2"
+agp = "9.2.1"
 junit4 = "4.13.2"
-kotlin = "2.2.21"
+kotlin = "2.3.10"
 ktlint-gradle = "14.2.0"
 
 [libraries]
@@ -9,6 +9,5 @@ junit4 = { module = "junit:junit", version.ref = "junit4" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-gradle" }

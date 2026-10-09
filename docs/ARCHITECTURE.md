@@ -65,9 +65,11 @@ The master toggle is off by default. Automatic mode requires the projection-host
 
 ## Platform compatibility
 
-The application compiles and targets stable API 36 and requires API 34 or later. It declares API
-37's exact `onCallEndpointRequested(CallEndpoint)` virtual signature, which is enforced by the
-service harness while the API 37 platform package is unavailable to hosted SDK Manager builds.
+The application compiles against stable API 37.0 with AGP 9.2.1 and Gradle 9.4.1, targets
+API 36, and requires API 34 or later. The compiler verifies the public
+`onCallEndpointRequested(CallEndpoint)` override. Host tests cover request origins and callback
+orders; Android 17 platform dispatch still needs device evidence. Target API 37 behavior changes
+are not opted into without qualification.
 Android 17 can dispatch the method; API 34–36 safely ignore it. Telecom may report an initiating
 request before or after the resulting endpoint change, so self-request markers are generation-bound
 and cleared at session teardown. External request callbacks are diagnostic only: the public callback
@@ -91,3 +93,23 @@ HFP queries and optional audio-framework probes run through `SingleFlightQuery` 
 Before the first target request, disconnected or unknown projection can be rechecked within the existing ten-second evidence deadline. Requests require a positive provider result. Confirmed projection loss after submission still ends the transaction. Sampling retains the earliest pending deadline across callbacks.
 
 Target confirmation is historical. Current target-audio evidence can become unknown or absent without reasserting routing. A watchdog firing well after its observation deadline records incomplete observation rather than classifying a teardown sample as in-window failure. Corroborated takeover requires fresh alternative SCO ownership and a 500 ms grace interval; immediate call shutdown is not counted as instability. Event-driven HFP monitoring continues while projection is active, with no full-call high-frequency poll.
+
+## Bounded protected observations
+
+SIM account and emergency-number reads, Telecom authorization, projection provider reads
+(including cursor access and close), HFP observations and framework audio sampling use separate
+process-wide single-worker executors with no queue. A stuck Binder read cannot block the service
+owner, accumulate queued jobs, or create replacement threads. The owner receives immutable
+results; closing a monitor discards later completions. Foreground setup authorization uses its
+own process-wide zero-queue worker, so a stuck setup read cannot occupy the routing service lane.
+Explicit user verification invalidates cached access and waits for a new result within a five-second
+foreground deadline; it does not report a cached grant or denial as a fresh verification.
+
+Call safety has explicit pending, safe and unsafe states. Permission and unsupported-call flags
+reject immediately. Positive safety is bound to the exact Call object and account/telephone
+handle, expires after 750 ms, and refreshes every 250 ms. State-only details updates retain fresh
+evidence, while identity changes invalidate it. Unknown authorization and pending safety never
+permit a request; the policy waits within the existing action deadline and suspends if evidence
+is lost after a request. Projection updates invalidate in-flight observations by generation;
+queries taking more than 750 ms cannot provide positive evidence. Stable projection evidence
+remains event-driven rather than expiring merely because a connection stays unchanged.

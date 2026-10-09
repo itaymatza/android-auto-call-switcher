@@ -1,0 +1,3 @@
+Version 0.3.0-beta.15
+
+Protected call-safety and Telecom authorization queries run off the service thread. Pending, stale and superseded evidence cannot authorize routing. Projection provider reads and cursor cleanup are bounded off-thread. Compile the Android 17 endpoint-request callback with the supported API 37 toolchain. Preserve the selected classic Bluetooth call device and Android Auto navigation/media behavior.

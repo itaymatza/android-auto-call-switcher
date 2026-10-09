@@ -25,7 +25,18 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.14
+## What changed in beta.15
+
+- Moves call eligibility and protected authorization reads off the service and UI threads.
+  Pending, stale, superseded and failed reads cannot authorize a routing request.
+- Moves projection provider reads, cursor access and cleanup to a bounded worker; broadcasts
+  invalidate in-flight results and delayed positive results stay unknown.
+- Compiles the real Android 17 endpoint-request override with the supported API 37 toolchain,
+  preserving Android 14+ installation, target API 36 and the existing package/signing identity.
+- Adds production-monitor lifecycle tests and policy/service tests for pending evidence,
+  deadlines, permission loss and call identity changes.
+
+## Earlier beta.14 behavior
 
 - Starts one bounded preferred-device routing transaction during outgoing dialing, then rechecks fresh
   audio evidence at answer without replacing a pending request or fighting manual selections.

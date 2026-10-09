@@ -3,8 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE="$ROOT/.tools"
-VERSION=8.13
-EXPECTED=20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78
+VERSION=9.4.1
+EXPECTED=2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
 if [[ -f "$CACHE/gradle-$VERSION/bin/gradle" ]]; then exit 0; fi
 mkdir -p "$CACHE"
 ZIP="$CACHE/gradle-$VERSION-bin.zip"

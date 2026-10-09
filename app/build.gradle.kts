@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ktlint)
 }
 
@@ -14,11 +13,11 @@ val configuredVersionCode =
     providers
         .gradleProperty("APP_VERSION_CODE")
         .map { it.toInt() }
-        .getOrElse(16)
+        .getOrElse(17)
 val configuredVersionName =
     providers
         .gradleProperty("APP_VERSION_NAME")
-        .orElse("0.3.0-beta.14")
+        .orElse("0.3.0-beta.15")
 val enableBetaSigning =
     providers
         .gradleProperty("ENABLE_BETA_SIGNING")
@@ -27,9 +26,8 @@ val enableBetaSigning =
 
 android {
     namespace = "org.carcallrouter.companion"
-    // API 37 is not yet available from the hosted sdkmanager repository. The service declares and
-    // regression-tests its exact forward-compatible virtual signature while building on API 36.
-    compileSdk = 36
+    // Compile the public endpoint-request callback; retain the qualified target behavior.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = configuredApplicationId.get()

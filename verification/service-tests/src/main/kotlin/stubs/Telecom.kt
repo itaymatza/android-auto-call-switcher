@@ -140,6 +140,8 @@ open class InCallService : Context() {
 
     open fun onCallEndpointChanged(callEndpoint: CallEndpoint) {}
 
+    open fun onCallEndpointRequested(callEndpoint: CallEndpoint) {}
+
     open fun onAvailableCallEndpointsChanged(availableEndpoints: MutableList<CallEndpoint>) {}
 
     open fun onUnbind(intent: Intent) = false

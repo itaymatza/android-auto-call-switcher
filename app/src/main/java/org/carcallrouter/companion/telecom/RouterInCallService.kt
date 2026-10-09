@@ -18,6 +18,7 @@ import org.carcallrouter.companion.ProjectionMonitor
 import org.carcallrouter.companion.RouterLog
 import org.carcallrouter.companion.RouterSettings
 import org.carcallrouter.companion.SessionBridge
+import org.carcallrouter.companion.core.CallSafety
 import org.carcallrouter.companion.core.CallTimeline
 import org.carcallrouter.companion.core.RoutingPolicy
 import org.carcallrouter.companion.core.RoutingTrace
@@ -34,6 +35,7 @@ class RouterInCallService :
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var settings: RouterSettings
     private lateinit var router: AddressedTelecomRouter
+    private lateinit var authorizationMonitor: AuthorizationMonitor
     private lateinit var classifier: CellularClassifier
     private lateinit var projectionMonitor: ProjectionMonitor
     private lateinit var hfp: HfpMonitor
@@ -289,7 +291,8 @@ class RouterInCallService :
             )
         settings = RouterSettings(this)
         router = AddressedTelecomRouter(this)
-        classifier = CellularClassifier(this)
+        authorizationMonitor = AuthorizationMonitor(this) { queueEvaluation() }
+        classifier = CellularClassifier(this) { queueEvaluation() }
         hfp = newHfpMonitor()
         audioFramework = AudioFrameworkProbe(this)
         projectionMonitor =
@@ -313,7 +316,7 @@ class RouterInCallService :
         SessionBridge.controller = WeakReference(this)
         RouterLog.event(
             "SERVICE_CREATE",
-            "non-UI service; authorized=${Access.ongoingCalls(this)}; ${ProcessDiagnostics.snapshot(this)}",
+            "non-UI service; authorized=${authorizationMonitor.sample()}; ${ProcessDiagnostics.snapshot(this)}",
         )
         projectionMonitor.start()
     }
@@ -519,6 +522,7 @@ class RouterInCallService :
     }
 
     override fun onCallRemoved(call: Call) {
+        classifier.remove(call)
         records.remove(call)?.let {
             it.timeline.observe("REMOVED", SystemClock.elapsedRealtime())
             trace.event("CALL_DURATION_SUMMARY", "call" to it.id, *it.timeline.fields(SystemClock.elapsedRealtime()))
@@ -694,12 +698,8 @@ class RouterInCallService :
         queueEvaluation()
     }
 
-    /**
-     * API 37 virtual callback. The exact public signature is enforced by the service harness until
-     * the API 37 platform package is available to hosted sdkmanager builds.
-     */
-    @Suppress("unused")
-    fun onCallEndpointRequested(callEndpoint: CallEndpoint) {
+    /** Observe platform and user requests without issuing a competing route change. */
+    override fun onCallEndpointRequested(callEndpoint: CallEndpoint) {
         val now = SystemClock.elapsedRealtime()
         val endpointId = callEndpoint.identifier.toString()
         val observation = router.observeRequest(callEndpoint)
@@ -918,16 +918,26 @@ class RouterInCallService :
         cancelTick("new_evaluation")
         val now = SystemClock.elapsedRealtime()
         val hfpFresh = hfp.sampledAt?.let { now - it in 0..RoutingPolicy.MAX_HFP_SAMPLE_AGE_MS } == true
-        val authorized = observeOperation("authorization") { Access.ongoingCalls(this) }
+        val authorized = observeOperation("authorization") { authorizationMonitor.sample() }
         val runtimeGranted = observeOperation("runtime_permissions") { Access.runtimeGranted(this) }
         val live = liveCalls()
         val active = live.any { it.details.state == Call.STATE_ACTIVE }
-        val rejections = observeOperation("call_safety") { live.mapNotNull(classifier::rejection) }
-        val safe = runtimeGranted && live.isNotEmpty() && rejections.isEmpty()
+        val assessment =
+            observeOperation("call_safety") {
+                if (live.size == 1) {
+                    classifier.assess(live.single())
+                } else {
+                    classifier.clear()
+                    CallSafety.Assessment.Unsafe(if (live.isEmpty()) "No live calls" else "Multiple calls / conference")
+                }
+            }
+        val safetyPending = runtimeGranted && assessment == CallSafety.Assessment.Pending
+        val safe = runtimeGranted && assessment == CallSafety.Assessment.Safe
         lastSafety =
             when {
                 !runtimeGranted -> "Required runtime permissions not granted"
-                rejections.isNotEmpty() -> rejections.joinToString("; ")
+                assessment is CallSafety.Assessment.Unsafe -> assessment.reason
+                safetyPending -> "Waiting for fresh call-safety evidence"
                 live.isEmpty() -> "No live calls"
                 else -> "SIM-backed call and emergency-number checks passed"
             }
@@ -973,7 +983,7 @@ class RouterInCallService :
         if (lateBindDeadline != null && policy.phase == RoutingPolicy.Phase.IDLE) {
             val prerequisitesReady =
                 settings.enabled &&
-                    authorized &&
+                    authorized == true &&
                     active &&
                     live.size == 1 &&
                     records.size == 1 &&
@@ -992,11 +1002,11 @@ class RouterInCallService :
                 isProtectedLateBindRoute(route)
             val immediatelyIneligible =
                 !settings.enabled ||
-                    !authorized ||
+                    authorized == false ||
                     !active ||
                     live.size != 1 ||
                     records.size != 1 ||
-                    !safe
+                    (!safe && !safetyPending)
             when {
                 immediatelyIneligible -> {
                     lateBindRecoveryDeadlineAt = null
@@ -1063,6 +1073,7 @@ class RouterInCallService :
                             ),
                     singleCall = live.size == 1 && records.size == 1,
                     safeCellularCall = safe,
+                    callSafetyPending = safetyPending,
                     projection = projection,
                     targetHfpConnected = hfpConnected,
                     targetHfpAudio = targetHfpAudio,
@@ -1145,6 +1156,8 @@ class RouterInCallService :
                 "hfp_fresh" to hfpFresh,
                 "hfp_known" to hfp.known,
                 *hfp.diagnosticFields(),
+                *classifier.diagnosticFields(),
+                *authorizationMonitor.diagnosticFields(),
                 "hfp_connected_count" to hfp.connected.size,
                 "hfp_audio_count" to hfp.audioConnected.size,
                 "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
@@ -1490,7 +1503,7 @@ class RouterInCallService :
                 }
             }
         }
-        if (active && projection == true && hfpStarted && runtimeGranted && authorized) {
+        if (active && projection == true && hfpStarted && runtimeGranted && authorized == true) {
             val desired = now + CALL_OBSERVATION_POLL_MS
             if (scheduledTickAt == null || requireNotNull(scheduledTickAt) > desired) scheduleTick(desired, "CALL_OBSERVATION_POLL")
         }
@@ -1581,6 +1594,8 @@ class RouterInCallService :
         records.forEach { (call, record) -> call.unregisterCallback(record.callback) }
         records.clear()
         projectionMonitor.close()
+        authorizationMonitor.close()
+        classifier.close()
         audioFramework.close()
         hfp.close()
         settings.prefs.unregisterOnSharedPreferenceChangeListener(prefListener)

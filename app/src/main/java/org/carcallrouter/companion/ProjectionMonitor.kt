@@ -9,22 +9,24 @@
  */
 package org.carcallrouter.companion
 
-import android.content.AsyncQueryHandler
 import android.content.BroadcastReceiver
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.database.Cursor
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import java.lang.ref.WeakReference
+import org.carcallrouter.companion.core.SingleFlightQuery
+import java.util.concurrent.Executor
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /** Main-thread owned, event-driven projection observation using the AndroidX host protocol. */
-class ProjectionMonitor(
+class ProjectionMonitor internal constructor(
     context: Context,
+    queryWorker: Executor = worker,
     private val changed: (Boolean?) -> Unit,
 ) : AutoCloseable {
     private val app = context.applicationContext
@@ -53,25 +55,87 @@ class ProjectionMonitor(
             "projection_query_ms" to queryDurationMs,
         )
 
-    private val query = ProjectionQueryHandler(app.contentResolver, this)
-    private val refresh =
+    private data class Observation(
+        val raw: Int?,
+        val status: String,
+        val active: Boolean?,
+        val generation: Int = -1,
+    )
+
+    private val query =
+        SingleFlightQuery<Observation>(queryWorker, Executor { main.post(it) }, SystemClock::elapsedRealtime) { result, _, started ->
+            queryPending = false
+            if (open) {
+                if (result.getOrNull()?.generation?.let { it != generation } == true) {
+                    RouterLog.event("PROJECTION_RESULT_IGNORED", "reason=stale_generation")
+                    main.post(refresh)
+                    return@SingleFlightQuery
+                }
+                val now = SystemClock.elapsedRealtime()
+                queryDurationMs = now - started
+                val observation =
+                    if (now - started !in 0..MAX_QUERY_AGE_MS) {
+                        Observation(null, "STALE", null)
+                    } else {
+                        result.getOrDefault(Observation(null, "ERROR", null))
+                    }
+                rawState = observation.raw
+                status = observation.status
+                completedAt = now
+                RouterLog.event(
+                    "PROJECTION_QUERY_COMPLETED",
+                    "active=${observation.active}; rawState=$rawState; status=$status; elapsedMs=$queryDurationMs; generation=$generation; trigger=$queryTrigger",
+                )
+                val state = observation.active?.toString() ?: "unknown"
+                if (state != lastLoggedState) {
+                    lastLoggedState = state
+                    RouterLog.event("PROJECTION", "active=$state; source=AndroidX_host_provider")
+                }
+                changed(observation.active)
+            }
+        }
+    private val refresh: Runnable =
         Runnable {
-            if (open && !queryPending) {
-                try {
-                    queryPending = true
-                    status = "QUERYING"
+            if (open) {
+                val epoch = generation
+                val previousStatus = status
+                val previousPending = queryPending
+                status = "QUERYING"
+                queryPending = true
+                val submitted =
+                    query.submit {
+                        readObservation().copy(generation = epoch)
+                    }
+                if (submitted) {
                     lastQueryAt = SystemClock.elapsedRealtime()
-                    RouterLog.event("PROJECTION_QUERY_STARTED", "generation=${generation + 1}; trigger=$queryTrigger")
-                    query.cancelOperation(QUERY_TOKEN)
-                    query.startQuery(QUERY_TOKEN, ++generation, HOST_URI, arrayOf(STATE_COLUMN), null, null, null)
-                } catch (e: RuntimeException) {
-                    queryPending = false
-                    status = "ERROR"
-                    RouterLog.event("PROJECTION_ERROR", e.javaClass.simpleName)
-                    changed(null)
+                    RouterLog.event("PROJECTION_QUERY_STARTED", "generation=$generation; trigger=$queryTrigger")
+                } else {
+                    status = previousStatus
+                    queryPending = previousPending
                 }
             }
         }
+
+    private fun readObservation(): Observation =
+        try {
+            // Query, window access and cursor close all stay off the service owner.
+            app.contentResolver.query(HOST_URI, arrayOf(STATE_COLUMN), null, null, null)?.use {
+                val column = it.getColumnIndex(STATE_COLUMN)
+                if (column < 0 || !it.moveToFirst()) {
+                    Observation(null, "UNKNOWN", null)
+                } else {
+                    val raw = it.getInt(column)
+                    when (raw) {
+                        0, 1 -> Observation(raw, "DISCONNECTED", false)
+                        2 -> Observation(raw, "CONNECTED", true)
+                        else -> Observation(raw, "UNRECOGNIZED", null)
+                    }
+                }
+            } ?: Observation(null, "UNKNOWN", null)
+        } catch (_: RuntimeException) {
+            Observation(null, "ERROR", null)
+        }
+
     private val receiver =
         object : BroadcastReceiver() {
             override fun onReceive(
@@ -82,7 +146,8 @@ class ProjectionMonitor(
                 if (intent.action == UPDATE_ACTION && open) {
                     queryTrigger = "provider_broadcast"
                     // Stop new automatic requests until the changed connection state is re-verified.
-                    if (queryPending) generation++
+                    generation++
+                    status = "UNKNOWN"
                     changed(null)
                     main.removeCallbacks(refresh)
                     main.post(refresh)
@@ -90,59 +155,9 @@ class ProjectionMonitor(
             }
         }
 
-    private fun onQueryComplete(
-        cookie: Any?,
-        cursor: Cursor?,
-    ) {
-        var observedRaw: Int? = null
-        var observedStatus = "UNKNOWN"
-        val value: Boolean? =
-            try {
-                cursor?.use {
-                    val column = it.getColumnIndex(STATE_COLUMN)
-                    if (column < 0 || !it.moveToFirst()) {
-                        null
-                    } else {
-                        observedRaw = it.getInt(column)
-                        when (observedRaw) {
-                            0, 1 -> false.also { observedStatus = "DISCONNECTED" }
-                            2 -> true.also { observedStatus = "CONNECTED" }
-                            else -> null.also { observedStatus = "UNRECOGNIZED" }
-                        }
-                    }
-                }
-            } catch (e: RuntimeException) {
-                observedStatus = "ERROR"
-                RouterLog.event("PROJECTION_ERROR", e.javaClass.simpleName)
-                null
-            }
-        if (open) queryPending = false
-        if (open && cookie != generation) {
-            RouterLog.event("PROJECTION_RESULT_IGNORED", "generation=$cookie; currentGeneration=$generation; reason=stale_generation")
-            main.post(refresh)
-            return
-        }
-        if (open && cookie == generation) {
-            rawState = observedRaw
-            status = observedStatus
-            completedAt = SystemClock.elapsedRealtime()
-            queryDurationMs = SystemClock.elapsedRealtime() - lastQueryAt
-            RouterLog.event(
-                "PROJECTION_QUERY_COMPLETED",
-                "active=$value; rawState=$rawState; status=$status; elapsedMs=$queryDurationMs; generation=$generation; trigger=$queryTrigger",
-            )
-            val state = value?.toString() ?: "unknown"
-            if (state != lastLoggedState) {
-                lastLoggedState = state
-                RouterLog.event("PROJECTION", "active=$value; source=AndroidX_host_provider")
-            }
-            changed(value)
-        }
-    }
-
     /** Bounded service startup recheck. Never infer projection from Bluetooth connectivity. */
     fun requestRefresh() {
-        if (open && !queryPending && (lastQueryAt == Long.MIN_VALUE || SystemClock.elapsedRealtime() - lastQueryAt >= 500)) {
+        if (open && (lastQueryAt == Long.MIN_VALUE || SystemClock.elapsedRealtime() - lastQueryAt >= 500)) {
             queryTrigger = "startup_recheck"
             main.removeCallbacks(refresh)
             main.post(refresh)
@@ -166,35 +181,19 @@ class ProjectionMonitor(
         open = false
         generation++
         main.removeCallbacks(refresh)
-        query.cancelOperation(QUERY_TOKEN)
+        query.close()
         if (registered) {
             runCatching { app.unregisterReceiver(receiver) }
             registered = false
         }
     }
 
-    private class ProjectionQueryHandler(
-        resolver: ContentResolver,
-        monitor: ProjectionMonitor,
-    ) : AsyncQueryHandler(resolver) {
-        private val monitor = WeakReference(monitor)
-
-        override fun onQueryComplete(
-            token: Int,
-            cookie: Any?,
-            cursor: Cursor?,
-        ) {
-            val owner = monitor.get()
-            if (owner == null) {
-                cursor?.close()
-            } else {
-                owner.onQueryComplete(cookie, cursor)
-            }
-        }
-    }
-
     companion object {
-        private const val QUERY_TOKEN = 42
+        private const val MAX_QUERY_AGE_MS = 750L
+        private val worker =
+            ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>(), { task ->
+                Thread(task, "router-projection-query").apply { isDaemon = true }
+            })
         private const val STATE_COLUMN = "CarConnectionState"
         private const val UPDATE_ACTION = "androidx.car.app.connection.action.CAR_CONNECTION_UPDATED"
         private val HOST_URI = Uri.parse("content://androidx.car.app.connection")
