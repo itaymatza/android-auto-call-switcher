@@ -15,8 +15,8 @@
     <string name="readiness_target_message">Select a paired Bluetooth device for call speaker and microphone audio: a headset, earbuds, speakerphone, or car system. It must use classic Bluetooth hands-free (HFP) and appear in your Phone app’s call-audio selector. LE Audio-only devices are not supported yet.</string>
     <string name="readiness_ready_title">Ready to turn on</string>
     <string name="readiness_ready_message">Setup is complete. Enable automatic routing when you are ready.</string>
-    <string name="readiness_active_title">Calls will use your selected device</string>
-    <string name="readiness_active_message">The app is ready and will make a bounded routing request when an eligible call starts.</string>
+    <string name="readiness_active_title">Ready to request call audio</string>
+    <string name="readiness_active_message">Automation is enabled. Each cellular call still needs Android Auto, a connected classic hands-free device, and an identifiable call endpoint. VoIP and app-managed calls are not supported.</string>
     <plurals name="setup_progress">
         <item quantity="one">%1$d of %2$d required step complete</item>
         <item quantity="other">%1$d of %2$d required steps complete</item>
@@ -24,7 +24,7 @@
     <string name="last_call_title">Last call result</string>
     <string name="last_call_none">No completed routing session has been recorded yet.</string>
     <string name="last_call_summary">%1$s\nResult: %2$s\nController: %3$s / %4$s\nBest evidence: %5$s</string>
-    <string name="last_call_hfp_confirmed">Target HFP audio confirmed at call start; check speaker and microphone in the car</string>
+    <string name="last_call_hfp_confirmed">Target HFP audio confirmed at call start; check the selected speaker and microphone</string>
     <string name="last_call_unstable">Target HFP audio takeover observed after initial confirmation</string>
     <string name="last_call_failed">Routing failed</string>
     <string name="last_call_incomplete">Audio observation incomplete; check diagnostics</string>
@@ -97,4 +97,22 @@
     <string name="project_url" translatable="false">https://github.com/itaymatza/car-call-router</string>
     <string name="releases_url" translatable="false">https://github.com/itaymatza/car-call-router/releases</string>
     <string name="issues_url" translatable="false">https://github.com/itaymatza/car-call-router/issues</string>
+    <string name="compatibility_checking">Checking the selected device’s call transport…</string>
+    <string name="compatibility_no_target">Choose a call device to check compatibility.</string>
+    <string name="compatibility_classic">Classic hands-free connection observed. During a call, the device must also appear in the Phone app’s audio selector. This does not verify its speaker or microphone.</string>
+    <string name="compatibility_other">LE Audio or hearing-aid connection observed; no classic hands-free connection observed. This transport is not supported yet. Automation waits for classic HFP. If available, enable “Phone calls” for this device in Bluetooth settings.</string>
+    <string name="compatibility_disconnected">No call-profile connection observed for the selected device. Connect it and enable “Phone calls” in Bluetooth settings, then refresh.</string>
+    <string name="compatibility_unknown">Call transport could not be fully checked. Connect the selected device, check Bluetooth access, and refresh. Automation still requires fresh HFP evidence during the call.</string>
+    <string name="report_parked_test">Record parked call test</string>
+    <string name="parked_test_title">Parked call test — %1$d of 4</string>
+    <string name="parked_test_intro">While parked, test a normal cellular call with Android Auto connected. Check the selected device’s speaker, ask the other person to confirm its microphone, check navigation, and check that media resumes after the call. Keep the phone away from the selected device when checking its microphone. Record only what you observed. These answers are your report, separate from Android’s route evidence.</string>
+    <string name="parked_test_speaker">Did call sound come from the selected Bluetooth device?</string>
+    <string name="parked_test_microphone">Did the other person confirm your voice came through the selected device’s microphone?</string>
+    <string name="parked_test_navigation">Did Android Auto navigation continue working during the call?</string>
+    <string name="parked_test_media">Did Android Auto media resume normally after the call?</string>
+    <string name="test_pass">Yes — checked and working</string>
+    <string name="test_fail">No — checked and failed</string>
+    <string name="test_not_checked">Not checked / unsure</string>
+    <string name="parked_test_saved">Observations recorded in the redacted log. Export it with your test report.</string>
+    <string name="parked_test_changed">Call-device configuration changed. Start a new test report for this setup.</string>
 </resources>

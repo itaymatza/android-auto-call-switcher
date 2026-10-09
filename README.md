@@ -152,6 +152,8 @@ sign-in, downloads as a ZIP, and expires.
 3. Select **Choose Bluetooth device**, then choose the intended call device.
 4. Select **Set up one-time ADB authorization** and follow the displayed steps.
 5. Return to the app and tap **Verify**. Continue only after the status says authorization is detected.
+6. In **Test safely**, check the selected device’s current call transport. Classic HFP is required; an LE Audio or hearing-aid connection alone is not enough.
+7. After a parked test call, use **Record parked call test** to report speaker, microphone, navigation, and media resumption separately. Export the redacted log alongside the captured run; reports do not automatically certify physical audio.
 
 See the exact [authorization and troubleshooting guide](docs/AUTHORIZATION.md), [configuration guidance](docs/CONFIGURATION.md), [research decision](docs/PLATFORM-RESEARCH.md), [diagnostic evidence and system captures](docs/DIAGNOSTIC-EVIDENCE.md), and [parked-car test procedure](docs/TESTING.md).
 

@@ -202,12 +202,18 @@
             android:orientation="vertical" android:padding="18dp">
             <TextView style="@style/BodyText" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/test_help" />
+            <TextView android:id="@+id/device_compatibility" style="@style/BodyText"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="@string/compatibility_checking" />
             <Button android:id="@+id/route_now" style="@style/PrimaryButton"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="14dp" android:text="@string/route_now" />
             <Button android:id="@+id/pause" style="@style/SecondaryButton"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:layout_marginTop="6dp" android:text="@string/pause" />
+            <Button android:id="@+id/report_parked_test" style="@style/SecondaryButton"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="@string/report_parked_test" />
         </LinearLayout>
 
         <Button android:id="@+id/advanced_toggle" style="@style/QuietButton"

@@ -208,3 +208,18 @@ after an OS or major One UI update. Freeze features during a batch; every failur
 a deterministic regression fixture. With zero failures in `n` independent trials, the approximate
 one-sided 95% upper bound on the failure rate is `3/n`: 60 clean trials support a bound below 5%,
 and 100 clean trials support a bound below 3%.
+
+## In-app parked observations
+
+Use **Test safely → Record parked call test** after a parked normal cellular call. Report each
+of speaker output, microphone input, Android Auto navigation, and media resumption as checked
+and working, checked and failed, or not checked. Confirm microphone input with the remote
+party while separating the phone and target microphone; merely seeing a selected route is not
+a microphone test. Media may pause normally during a call; test resumption after it ends.
+Export the redacted log. `USER_PARKED_TEST` is operator evidence, separate from automatic HFP
+confirmation, and does not automatically pass the capture/qualification tools.
+
+The foreground compatibility check reports connection observations only. Verify classic-only,
+dual-transport, LE-only and hearing-aid devices, Bluetooth off, permission revocation, return
+from device settings, and stopping/restarting the activity on physical hardware. No HFP
+connection means the routing service still waits/stops under its existing bounded policy.

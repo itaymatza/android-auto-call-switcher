@@ -23,15 +23,36 @@ Core and production-service deterministic tests exercise the real routing implem
 framework doubles; they do not certify physical Bluetooth audio. Android build, unit tests, lint,
 APK manifest/signature verification, and tooling checks are required before publication.
 
-Local validation on 2026-10-09: 83 core JUnit tests, 101 deterministic service scenarios, 4 app
+Local validation on 2026-10-09: 83 core JUnit tests, 101 deterministic service scenarios, 10 app
 unit tests, and 45 Python tooling tests passed. The core and service coverage gates passed. The
 Android debug APK assembled; Kotlin style checks, Android lint, and APK signature/manifest checks
 passed. No real-device LE Audio, VoIP, microphone, speaker, or AA media-continuity qualification
 was performed by these host checks.
 
+## Foreground compatibility and physical test workflow
+
+The Test safely card now inspects current classic HFP, LE Audio, and hearing-aid profile
+connections without changing any route, connection, or permission. It checks the selected
+address only. A dual-transport device with classic HFP connected remains eligible for the
+existing service checks. An observed LE/hearing-aid connection without observed HFP gets an
+explicit unsupported-transport explanation. Missing proxies, stale/failed queries, and revoked
+access remain unknown; absence is not inferred from an unavailable profile. This preflight
+never authorizes routing or certifies active audio. State changes enter the redacted log as
+`DEVICE_PREFLIGHT` with connection-only evidence. It runs only while the setup activity is
+started, uses a bounded single-flight worker, and expires old observations.
+
+“Record parked call test” asks separately about the selected speaker, the selected microphone
+(confirmed with the other person), Android Auto navigation during the call, and media resumption
+afterward. Each answer is PASS, FAIL, or NOT_CHECKED. Canceling drops an incomplete report;
+changing device configuration drops it too. Completed reports enter the redacted log as
+`USER_PARKED_TEST` with `source=user_report` and session timestamps. They never upgrade an
+automatic HFP result or qualification-tool verdict. Export the report alongside a captured run
+and explicitly complete the existing operator observations. A passing report applies to that
+test only, not every phone, transport, or future call.
+
 ## Remaining product gaps
 
-1. **LE Audio-only and hearing-aid transports.** The current monitor observes classic HFP/SCO only.
+1. **LE Audio-only and hearing-aid transports.** The routing monitor observes classic HFP/SCO only; the foreground preflight can now identify current LE/hearing-aid connections and explain the limitation.
    The generic Bluetooth endpoint type does not prove which transport is active. A future backend
    must resolve LE device/group identity and represent its evidence separately. It must not relabel
    Telecom's route display or `AudioManager`'s device type as exact physical audio proof. Supported
