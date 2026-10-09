@@ -119,6 +119,62 @@ class QualificationSummaryTest(unittest.TestCase):
             self.assertFalse(summary.ready)
             self.assertTrue(any("no device-run evidence" in error for error in summary.errors))
 
+    def test_raw_parked_report_vetoes_saved_pass_and_stale_json(self):
+        for answer in ("FAIL", "NOT_CHECKED", "yes"):
+            with self.subTest(answer=answer), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.make_complete_batch(root)
+                run = root / "run-000"
+                (run / "app-events.log").write_text(
+                    f"USER_PARKED_TEST source=user_report speaker=PASS microphone={answer} "
+                    "aa_navigation=PASS aa_media_resumed=PASS "
+                    "physical_audio_automatically_verified=false universal_qualification=false\n",
+                    encoding="utf-8",
+                )
+                (run / "parked-reports.json").write_text('{"acceptable": true}', encoding="utf-8")
+                summary = summarize(root)
+                self.assertFalse(summary.ready)
+                self.assertEqual(70, summary.passed)
+                self.assertEqual(1, summary.failed)
+                self.assertIsNone(summary.upper_failure_bound_95)
+                self.assertTrue(any("parked-test report" in error for error in summary.errors))
+
+    def test_current_capture_requires_raw_parked_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_complete_batch(root)
+            (root / "run-000" / "verdict.txt").write_text(
+                "verdict=PASS\nrule=all_new_sessions_have_complete_trace_and_all_required_observations"
+                "_are_yes_and_no_parked_report_problem\n", encoding="utf-8",
+            )
+            summary = summarize(root)
+            self.assertFalse(summary.ready)
+            self.assertEqual(1, summary.failed)
+            self.assertTrue(any("cannot read parked-test evidence" in error for error in summary.errors))
+
+    def test_positive_reports_do_not_upgrade_failed_verdict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_run(root, 0, "outgoing", [], verdict="FAIL")
+            (root / "run-000" / "app-events.log").write_text(
+                "USER_PARKED_TEST source=user_report speaker=PASS microphone=PASS "
+                "aa_navigation=PASS aa_media_resumed=PASS "
+                "physical_audio_automatically_verified=false universal_qualification=false\n",
+                encoding="utf-8",
+            )
+            summary = summarize(root)
+            self.assertFalse(summary.ready)
+            self.assertEqual(0, summary.passed)
+            self.assertEqual(1, summary.failed)
+
+    def test_empty_raw_events_keep_existing_legacy_requirements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_complete_batch(root)
+            (root / "run-000" / "app-events.log").write_text("", encoding="utf-8")
+            summary = summarize(root)
+            self.assertTrue(summary.ready, summary.errors)
+
 
 if __name__ == "__main__":
     unittest.main()
