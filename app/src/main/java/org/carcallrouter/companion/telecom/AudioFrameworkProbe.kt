@@ -104,7 +104,8 @@ internal class AudioFrameworkProbe(
             // only salted aliases are exported, and product names are deliberately omitted.
             operation = "device_inventory"
             operationStartedAt = SystemClock.elapsedRealtime()
-            val inventory = manager?.getDevices(AudioManager.GET_DEVICES_ALL)?.map(::describeDevice)
+            val inventory =
+                manager?.getDevices(AudioManager.GET_DEVICES_INPUTS or AudioManager.GET_DEVICES_OUTPUTS)?.map(::describeDevice)
             val available = manager?.availableCommunicationDevices?.map(::describeDevice)
             RouterLog.event(
                 "AUDIO_QUERY_STAGE_COMPLETED",
