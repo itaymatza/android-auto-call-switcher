@@ -40,7 +40,7 @@ def main() -> int:
 
     expected = {
         "README.md": [
-            "installed app and this repository are both named **Car Call Router**",
+            "installed app is named **Android Auto Call Switcher**",
             f"APP_VERSION_CODE={version_code}",
             f"APP_VERSION_NAME={version_name}",
             "https://github.com/itaymatza/car-call-router/releases",
@@ -75,10 +75,10 @@ def main() -> int:
             'android:usesCleartextTraffic="false"',
         ],
         "app/src/main/res/values/strings.xml": [
-            '<string name="app_name">Car Call Router</string>',
+            '<string name="app_name">Android Auto Call Switcher</string>',
             "https://github.com/itaymatza/car-call-router/releases",
         ],
-        "fastlane/metadata/android/en-US/title.txt": ["Car Call Router"],
+        "fastlane/metadata/android/en-US/title.txt": ["Android Auto Call Switcher"],
         f"fastlane/metadata/android/en-US/changelogs/{version_code}.txt": [
             f"Version {version_name}",
         ],

@@ -437,7 +437,7 @@ class RouterInCallService :
                 trace.event("LATE_BIND_RECOVERY_PENDING", "initial_route" to currentRoute())
                 RouterLog.event(
                     "LATE_BIND_RECOVERY_PENDING",
-                    "Awaiting verified Android Auto, BMW HFP and endpoint evidence",
+                    "Awaiting verified Android Auto, selected device HFP and endpoint evidence",
                 )
             }
         }
@@ -633,9 +633,14 @@ class RouterInCallService :
         router.updateCurrent(callEndpoint)
         lastEndpointId = callEndpoint.identifier.toString()
         val route = currentRoute()
-        if (outgoingDialingPhase && route in DEFINITE_USER_OWNED_ROUTES) {
+        if (
+            sessionStarted &&
+            !manualSession &&
+            (outgoingDialingPhase || policy.phase !in RoutingPolicy.terminalPhases) &&
+            route in DEFINITE_USER_OWNED_ROUTES
+        ) {
             suspendSessionFromEvent(
-                "Protected route observed during dialing; respecting possible user choice",
+                "Protected route observed during automatic routing; respecting possible user choice",
                 RoutingPolicy.ReasonCode.USER_OVERRIDE,
             )
         }
@@ -824,6 +829,13 @@ class RouterInCallService :
             savedLabel = settings.targetName,
             targetHfpConnected = address != null && hfp.known && address in hfp.connected,
             connectedHfpCount = if (hfp.known) hfp.connected.size else 0,
+            liveTargetLabels = hfp.deviceLabels[address].orEmpty(),
+            otherConnectedLabels =
+                hfp.deviceLabels
+                    .filterKeys { it != address }
+                    .values
+                    .flatten()
+                    .toSet(),
         )
     }
 
@@ -833,6 +845,13 @@ class RouterInCallService :
             savedLabel = settings.competitorName,
             targetHfpConnected = address != null && hfp.known && address in hfp.connected,
             connectedHfpCount = if (hfp.known) hfp.connected.size else 0,
+            liveTargetLabels = hfp.deviceLabels[address].orEmpty(),
+            otherConnectedLabels =
+                hfp.deviceLabels
+                    .filterKeys { it != address }
+                    .values
+                    .flatten()
+                    .toSet(),
         )
     }
 
@@ -1428,7 +1447,7 @@ class RouterInCallService :
                     )
                 } else {
                     "UNKNOWN"
-                }}; BMW confirmed=${policy.verified && targetHfpAudio == true}",
+                }}; Selected device confirmed=${policy.verified && targetHfpAudio == true}",
                 "Selector recovery: ${when {
                     competitorAddress == null -> "unavailable: competing device not configured"
                     competitor.endpoint == null -> "unavailable: competing endpoint unresolved"
@@ -1580,7 +1599,7 @@ class RouterInCallService :
         writer: PrintWriter,
         args: Array<out String>,
     ) {
-        writer.println("Car Call Router (redacted)")
+        writer.println("Android Auto Call Switcher (redacted)")
         writer.println(SessionBridge.status)
         writer.println(RouterLog.recentText())
     }

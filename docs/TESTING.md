@@ -20,10 +20,10 @@ fresh local logs under `verification/current/`, which is intentionally ignored b
 framework-double service runner remains available for focused debugging, but normal verification
 runs it through Gradle/JUnit so JaCoCo can measure the production boundary.
 
-The production-service harness includes the captured Samsung failure shape: Telecom displays BMW,
+The production-service harness includes the captured Samsung failure shape: Telecom displays the preferred device,
 Android Auto owns SCO, and another `InCallService` request arrives immediately after ACTIVE. It
 also verifies the settling delay, silent HFP ownership changes sampled during settling, strict
-one-BMW-request budget, stable-SCO requirement, result races,
+one-target-request budget, stable-SCO requirement, result races,
 manual selector preservation, lifecycle cancellation, late binding, and request-marker isolation.
 The [call-audio mechanism and CI matrix](CALL-AUDIO-MECHANISM.md) also cover Android 17's conditional
 Audio Managed SCO path, read-only audio-framework diagnostics, endpoint-list churn after a request,
@@ -127,22 +127,22 @@ The analyzer reports malformed records, unsupported schemas, sequence gaps, time
 missing starts, and duplicate finishes as `INVALID`. A session that confirms only the Telecom endpoint is `INCOMPLETE` unless the policy explicitly
 failed, in which case it is `FAIL`. A policy failure remains `FAIL` even if target HFP audio was confirmed earlier in the call.
 A session is `UNSTABLE` when exact target audio is eventually confirmed
-but the trace also shows an endpoint oscillation such as BMW → handset → BMW or a later
-loss of confirmed BMW HFP audio (including the post-confirmation watch verdict). Endpoint-request
+but the trace also shows an endpoint oscillation such as the preferred device → handset → the preferred device or a later
+loss of confirmed the preferred device HFP audio (including the post-confirmation watch verdict). Endpoint-request
 callbacks are reported for diagnostics only because Android can emit them during call startup without
 a user action. A session cannot be `PASS` without a finish, exact target HFP audio confirmation, and
 no detected instability. `selector_recoveries` reports the bounded Samsung selector-restoration path;
-it remains a routing failure until a later manual BMW selection produces exact target HFP audio.
+it remains a routing failure until a later manual selection of the preferred device produces exact target HFP audio.
 The report separately marks `diagnostic_complete`, lists any missing request contexts, identifies a
-Telecom-BMW/other-HFP mismatch without assuming which device owns that HFP audio, and reports the final HFP owner and selector-recovery
+Telecom-target/other-HFP mismatch without assuming which device owns that HFP audio, and reports the final HFP owner and selector-recovery
 confirmation. Use `--require-diagnostics` when checking a capture outside the harness.
 The app's last-call result labels HFP confirmation separately from later instability. It is not
 proof of the physical speaker or microphone: those require the parked-car observation.
 
 For the reported Samsung selector regression, run `--scenario selector-recovery`. In addition to
 the standard speaker, microphone, and Android Auto observations, the harness records whether the
-Phone UI showed BMW while Android Auto actually owned audio, whether recovery made the UI truthful,
-whether BMW became selectable, and whether the final manual selection moved both speaker and mic.
+Phone UI showed the preferred device while Android Auto actually owned audio, whether recovery made the UI truthful,
+whether the preferred device became selectable, and whether the final manual selection moved both speaker and mic.
 
 After collecting multiple runs, summarize the entire batch with:
 
@@ -171,7 +171,7 @@ On 2026-09-19, the project owner confirmed the proof of concept on the intended 
 6. After the call becomes active, tap **Route this call now** once.
 7. Confirm the app reports the target endpoint as verified. Speak and listen through the intended device; ask the helper which microphone is heard.
 8. Confirm navigation/media remains active on Android Auto.
-9. Manually select speaker and then BMW in the Phone UI. Confirm every endpoint remains selectable and the app never switches back after its single transaction.
+9. Manually select speaker and then the preferred device in the Phone UI. Confirm every endpoint remains selectable and the app never switches back after its single transaction.
 10. End the call and complete the capture prompts. If working manually, export the redacted diagnostic log after a failure and inspect it before sharing. Only after the one-shot test succeeds should automatic mode be enabled.
 
 Repeat separately for outgoing and incoming calls. Then test call hold/resume and a second incoming call; the expected safe behavior is to stop automatic reassertion. Conferences and emergency calls must never be used as positive routing tests.
@@ -191,13 +191,13 @@ Do not promote a beta to a production release until one unchanged APK passes all
 
 | Scenario | Minimum evidence | Expected result |
 |---|---:|---|
-| Incoming and outgoing calls | 20 of each | BMW speaker and microphone selected; Android Auto navigation/media remains available. |
+| Incoming and outgoing calls | 20 of each | Preferred-device speaker and microphone selected; Android Auto navigation/media remains available. |
 | Cold start, warm start, screen off, and post-reboot | 5 calls per state | Same routing result without opening the app. |
 | Samsung unrestricted, optimized, and restricted battery states | 5 calls per state | Binding behavior is measured explicitly; unsupported restricted behavior is documented rather than guessed. |
-| Android Auto first vs BMW Bluetooth first | 10 calls per connection order | Callback ordering does not change the result. |
+| Android Auto first vs preferred Bluetooth first | 10 calls per connection order | Callback ordering does not change the result. |
 | Consecutive calls and calls after idle | 10 calls | No stale session, request budget, or endpoint identity leaks into the next call. |
 | Temporary projection/HFP unknown callbacks | Instrumented logs for each occurrence | Requests freeze and recover inside the bounded window; no false user-override classification. |
-| Confirmed BMW or projection disconnect | 5 controlled trials each | Guard stops and does not resume automatically in that call. |
+| Confirmed preferred-device or projection disconnect | 5 controlled trials each | Guard stops and does not resume automatically in that call. |
 | Speaker, handset, wired, or other Bluetooth override | 3 trials per route | User choice is respected immediately and is not fought. |
 | Hold/resume, second call, and conference | 3 trials each | Automatic reassertion stops for the session. |
 
@@ -208,3 +208,18 @@ after an OS or major One UI update. Freeze features during a batch; every failur
 a deterministic regression fixture. With zero failures in `n` independent trials, the approximate
 one-sided 95% upper bound on the failure rate is `3/n`: 60 clean trials support a bound below 5%,
 and 100 clean trials support a bound below 3%.
+
+## In-app parked observations
+
+Use **Test safely → Record parked call test** after a parked normal cellular call. Report each
+of speaker output, microphone input, Android Auto navigation, and media resumption as checked
+and working, checked and failed, or not checked. Confirm microphone input with the remote
+party while separating the phone and target microphone; merely seeing a selected route is not
+a microphone test. Media may pause normally during a call; test resumption after it ends.
+Export the redacted log. `USER_PARKED_TEST` is operator evidence, separate from automatic HFP
+confirmation, and does not automatically pass the capture/qualification tools.
+
+The foreground compatibility check reports connection observations only. Verify classic-only,
+dual-transport, LE-only and hearing-aid devices, Bluetooth off, permission revocation, return
+from device settings, and stopping/restarting the activity on physical hardware. No HFP
+connection means the routing service still waits/stops under its existing bounded policy.

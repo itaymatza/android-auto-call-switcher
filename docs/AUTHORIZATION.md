@@ -1,6 +1,6 @@
 # Telecom authorization
 
-Car Call Router can keep Samsung Phone as the default dialer, but Android does
+Android Auto Call Switcher can keep your existing Phone app as the default dialer, but Android does
 not let an ordinary installed app control an ongoing call automatically. The
 protected `MANAGE_ONGOING_CALLS` AppOp must be allowed once for this package.
 

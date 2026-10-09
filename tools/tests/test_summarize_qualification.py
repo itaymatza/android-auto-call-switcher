@@ -50,7 +50,7 @@ class QualificationSummaryTest(unittest.TestCase):
             tags = [
                 states[index % len(states)],
                 batteries[index % len(batteries)],
-                "android-auto-first" if index % 2 == 0 else "bmw-first",
+                "android-auto-first" if index % 2 == 0 else "target-first",
             ]
             if index < 5:
                 tags.append("consecutive")
@@ -59,7 +59,7 @@ class QualificationSummaryTest(unittest.TestCase):
             self.write_run(root, index, "incoming" if index < 20 else "outgoing", tags)
 
         next_run = 40
-        for disconnect_tag in ("bmw-disconnect", "projection-disconnect"):
+        for disconnect_tag in ("target-disconnect", "projection-disconnect"):
             for _ in range(5):
                 self.write_run(root, next_run, "reconnect", [disconnect_tag])
                 next_run += 1
@@ -86,6 +86,20 @@ class QualificationSummaryTest(unittest.TestCase):
             self.assertEqual(71, summary.passed)
             self.assertAlmostEqual(3 / 71, summary.upper_failure_bound_95)
             self.assertTrue(all(item.complete for item in summary.requirements))
+
+    def test_legacy_vehicle_tags_still_qualify_existing_captures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_complete_batch(root)
+            for metadata in root.glob("*/device.txt"):
+                metadata.write_text(
+                    metadata.read_text().replace("target-first", "bmw-first")
+                    .replace("target-disconnect", "bmw-disconnect"), encoding="utf-8",
+                )
+            summary = summarize(root)
+            self.assertTrue(summary.ready, summary.errors)
+            self.assertEqual(71, summary.passed)
+
 
     def test_changed_apk_and_failure_block_readiness(self):
         with tempfile.TemporaryDirectory() as directory:

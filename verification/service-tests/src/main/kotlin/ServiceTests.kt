@@ -46,6 +46,7 @@ private fun reset() {
     ProjectionMonitor.instances.clear()
     ProjectionMonitor.current = true
     HfpMonitor.instances.clear()
+    HfpMonitor.labels = emptyMap()
     HfpMonitor.queryDelayMs = 0L
     HfpMonitor.isKnown = true
     HfpMonitor.devices = setOf(TARGET, COMPETING, OTHER)
@@ -305,7 +306,7 @@ fun main(args: Array<String>) {
                     countEquals(f, 1)
                     check(SessionBridge.status.contains("SCO=false"))
                     check(SessionBridge.status.contains("Telecom endpoint: TARGET"))
-                    check(SessionBridge.status.contains("HFP audio: COMPETITOR; BMW confirmed=false"))
+                    check(SessionBridge.status.contains("HFP audio: COMPETITOR; Selected device confirmed=false"))
                 }
             },
             "outgoing_audio_change_without_broadcast_is_sampled_before_verdict" to {
@@ -318,7 +319,7 @@ fun main(args: Array<String>) {
                     HfpMonitor.emit(HfpMonitor.devices)
                     f.activateAndSettle()
                     countEquals(f, 1)
-                    check(SessionBridge.status.contains("HFP audio: COMPETITOR; BMW confirmed=false"))
+                    check(SessionBridge.status.contains("HFP audio: COMPETITOR; Selected device confirmed=false"))
 
                     // The headset proxy changes after Telecom accepts, but the OEM does not
                     // deliver an audio-state broadcast. The verification timer must re-query it.
@@ -327,7 +328,7 @@ fun main(args: Array<String>) {
                     check(SessionBridge.status.contains("STABILIZING"))
                     TestQueue.advanceTo(1_250)
                     check(SessionBridge.status.contains("TARGET_AUDIO_CONFIRMED"))
-                    check(SessionBridge.status.contains("HFP audio: TARGET; BMW confirmed=true"))
+                    check(SessionBridge.status.contains("HFP audio: TARGET; Selected device confirmed=true"))
                     countEquals(f, 1)
                     check(
                         RouterLog.events.any {
@@ -348,7 +349,7 @@ fun main(args: Array<String>) {
                     check(HfpMonitor.refreshes > before)
                     check(SessionBridge.status.contains("TARGET_AUDIO_NOT_CONFIRMED"))
                     check(SessionBridge.status.contains("Telecom endpoint: TARGET"))
-                    check(SessionBridge.status.contains("HFP audio: OTHER; BMW confirmed=false"))
+                    check(SessionBridge.status.contains("HFP audio: OTHER; Selected device confirmed=false"))
                     countEquals(f, 1)
                     val after = HfpMonitor.refreshes
                     TestQueue.advanceTo(10_000)
@@ -859,7 +860,7 @@ fun main(args: Array<String>) {
                     HfpMonitor.audioDevices = setOf(COMPETING)
                     TestQueue.advanceTo(1_050)
                     check(HfpMonitor.refreshes > before)
-                    check(SessionBridge.status.contains("HFP audio: COMPETITOR; BMW confirmed=false"))
+                    check(SessionBridge.status.contains("HFP audio: COMPETITOR; Selected device confirmed=false"))
                     check(
                         RouterLog.events.any {
                             it.first == "ROUTING_TRACE" &&
@@ -1068,6 +1069,80 @@ fun main(args: Array<String>) {
                     )
                 }
             },
+            "preferred_device_connecting_after_answer_routes_within_startup_window" to {
+                Fixture().use { f ->
+                    HfpMonitor.emit(setOf(COMPETING, OTHER))
+                    f.flush()
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    check(SessionBridge.status.contains("WAITING_TARGET_HFP"))
+                    TestQueue.advanceTo(1000)
+                    HfpMonitor.emit(setOf(TARGET, COMPETING, OTHER))
+                    f.flush()
+                    countEquals(f, 1)
+                }
+            },
+            "preferred_device_connecting_after_startup_deadline_does_not_take_over" to {
+                Fixture().use { f ->
+                    HfpMonitor.emit(setOf(COMPETING, OTHER))
+                    f.flush()
+                    f.activateAndSettle()
+                    TestQueue.advanceTo(11000)
+                    HfpMonitor.emit(setOf(TARGET, COMPETING, OTHER))
+                    f.flush()
+                    countEquals(f, 0)
+                    check(SessionBridge.status.contains("EVIDENCE_DEADLINE_EXPIRED"))
+                }
+            },
+            "renamed_headset_routes_using_live_bluetooth_identity" to {
+                Fixture().use { f ->
+                    val renamed = CallEndpoint("Renamed headset", CallEndpoint.TYPE_BLUETOOTH, TARGET_ID)
+                    HfpMonitor.labels =
+                        mapOf(
+                            TARGET to setOf("Renamed headset", "Headset factory name"),
+                            COMPETING to setOf("Competing test device"),
+                            OTHER to setOf("Other test device"),
+                        )
+                    f.endpoints(listOf(renamed, competing, other))
+                    f.activateAndSettle()
+                    countEquals(f, 1)
+                    check(
+                        f.service.issuedRequests
+                            .single()
+                            .second == TARGET_ID.toString(),
+                    )
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(1000)
+                    check(SessionBridge.status.contains("reason=TARGET_AUDIO_CONFIRMED"))
+                    check(RouterLog.events.none { "Renamed headset" in it.second || "Headset factory name" in it.second })
+                }
+            },
+            "duplicate_live_bluetooth_names_suppress_automatic_request" to {
+                Fixture().use { f ->
+                    HfpMonitor.labels =
+                        mapOf(
+                            TARGET to setOf("Target test device"),
+                            OTHER to setOf("Target test device"),
+                        )
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    TestQueue.advanceTo(11000)
+                    countEquals(f, 0)
+                    check(SessionBridge.status.contains("Connected Bluetooth devices share"))
+                }
+            },
+            "adapter_rejects_old_callback_instance_with_reused_uuid" to {
+                reset()
+                val service = InCallService()
+                val adapter = AddressedTelecomRouter(service)
+                adapter.updateAvailable(listOf(target))
+                val replacement = CallEndpoint("Renamed test headset", CallEndpoint.TYPE_BLUETOOTH, TARGET_ID)
+                adapter.updateAvailable(listOf(replacement))
+                check(runCatching { adapter.request(target, {}, {}, { _, _ -> }) }.isFailure)
+                check(service.issuedRequests.isEmpty())
+                adapter.request(replacement, {}, {}, { _, _ -> error("unexpected rejection") })
+                check(service.issuedRequests.single().second == replacement.identifier.toString())
+            },
             "adapter_rejects_stale_endpoint_and_clears_runtime_marker" to {
                 reset()
                 val service = InCallService()
@@ -1121,7 +1196,7 @@ fun main(args: Array<String>) {
                     f.flush()
                     val output = StringWriter()
                     f.service.dump(FileDescriptor.out, PrintWriter(output, true), emptyArray())
-                    check("Car Call Router (redacted)" in output.toString())
+                    check("Android Auto Call Switcher (redacted)" in output.toString())
                     check(!f.service.onUnbind(Intent()))
                     check(SessionBridge.controller == null)
                 }
@@ -1249,7 +1324,7 @@ fun main(args: Array<String>) {
                     TestQueue.advanceTo(1200)
                     TestQueue.advanceTo(1500)
                     countEquals(f, 1)
-                    check(SessionBridge.status.contains("BMW confirmed=true"))
+                    check(SessionBridge.status.contains("Selected device confirmed=true"))
                 }
             },
             "answer_during_pending_dialing_request_does_not_replace_it" to {
@@ -1260,7 +1335,7 @@ fun main(args: Array<String>) {
                     countEquals(f, 1)
                     f.targetAudio(true)
                     TestQueue.advanceTo(1200)
-                    check(SessionBridge.status.contains("BMW confirmed=true"))
+                    check(SessionBridge.status.contains("Selected device confirmed=true"))
                 }
             },
             "long_dialing_timeout_then_answer_has_a_separate_bounded_pass" to {
@@ -1298,6 +1373,30 @@ fun main(args: Array<String>) {
                     f.flush()
                     f.activateWithoutSettling()
                     TestQueue.advanceTo(2000)
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
+                }
+            },
+            "answered_call_manual_route_before_settling_is_preserved" to {
+                listOf(speaker, handset, wired).forEach { selected ->
+                    Fixture().use { f ->
+                        f.activateWithoutSettling()
+                        f.route(selected)
+                        // A later platform callback must not erase the protected-route event.
+                        f.route(competing)
+                        TestQueue.advanceTo(2000)
+                        countEquals(f, 0)
+                        check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
+                    }
+                }
+            },
+            "manual_route_during_answer_verification_prevents_recovery" to {
+                Fixture(initialEndpoint = target).use { f ->
+                    f.activateAndSettle()
+                    countEquals(f, 1)
+                    f.route(speaker)
+                    f.route(target)
+                    TestQueue.advanceTo(5000)
                     countEquals(f, 1)
                     check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
                 }
@@ -1413,7 +1512,7 @@ fun main(args: Array<String>) {
                     f.flush()
                     repeat(240) { TestQueue.advanceTo(TestQueue.now + 250) }
                     countEquals(f, 1)
-                    check(SessionBridge.status.contains("BMW confirmed=false"))
+                    check(SessionBridge.status.contains("Selected device confirmed=false"))
                     check(SessionBridge.status.contains("TARGET_AUDIO_NOT_CONFIRMED"))
                     check(RouterLog.events.any { "event=CALL_AUDIO_OBSERVATION" in it.second && "target_sco=false" in it.second })
                     f.call.deliverState(Call.STATE_DISCONNECTED)

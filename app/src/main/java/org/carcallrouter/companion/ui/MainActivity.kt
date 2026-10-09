@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -38,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var readinessMessage: TextView
     private lateinit var setupProgress: TextView
     private lateinit var lastCallResult: TextView
+    private lateinit var deviceCompatibility: TextView
     private lateinit var masterHelp: TextView
     private lateinit var projectionValue: TextView
     private lateinit var permissionsState: TextView
@@ -60,7 +62,9 @@ class MainActivity : Activity() {
     private var advancedVisible = false
     private var diagnosticsVisible = false
     private var monitor: ProjectionMonitor? = null
+    private var preflight: CallDevicePreflight? = null
     private var projection: Boolean? = null
+    private var lastPreflightState: Pair<String?, CallDeviceCompatibility>? = null
     private val statusListener: () -> Unit = { refresh() }
     private val logListener: () -> Unit = { logs.text = RouterLog.recentText() }
 
@@ -106,7 +110,11 @@ class MainActivity : Activity() {
         button(R.id.pause) {
             SessionBridge.controller?.get()?.pauseSession() ?: toast("No active call session to pause.")
         }
-        button(R.id.refresh) { refresh() }
+        button(R.id.refresh) {
+            preflight?.refresh()
+            refresh()
+        }
+        button(R.id.report_parked_test) { recordParkedTest() }
         button(R.id.advanced_toggle) {
             advancedVisible = !advancedVisible
             advancedContent.visibility = if (advancedVisible) View.VISIBLE else View.GONE
@@ -152,6 +160,7 @@ class MainActivity : Activity() {
         readinessMessage = findViewById(R.id.readiness_message)
         setupProgress = findViewById(R.id.setup_progress)
         lastCallResult = findViewById(R.id.last_call_result)
+        deviceCompatibility = findViewById(R.id.device_compatibility)
         masterHelp = findViewById(R.id.master_help)
         projectionValue = findViewById(R.id.projection_value)
         permissionsState = findViewById(R.id.permissions_state)
@@ -181,6 +190,7 @@ class MainActivity : Activity() {
                 projection = it
                 refresh()
             }.also { it.start() }
+        preflight = CallDevicePreflight(this) { refresh() }.also { it.start() }
         logs.text = RouterLog.recentText()
     }
 
@@ -196,6 +206,8 @@ class MainActivity : Activity() {
         RouterLog.remove(logListener)
         monitor?.close()
         monitor = null
+        preflight?.close()
+        preflight = null
         super.onStop()
     }
 
@@ -221,6 +233,32 @@ class MainActivity : Activity() {
         master.isEnabled = setup.ready || settings.enabled
         syncing = false
 
+        val compatibility =
+            CallDeviceCompatibility.resolve(
+                settings.targetAddress,
+                preflight?.connections ?: emptyMap(),
+                BluetoothProfile.HEADSET,
+                setOf(BluetoothProfile.LE_AUDIO, BluetoothProfile.HEARING_AID),
+            )
+        val preflightState = settings.targetAddress to compatibility
+        if (lastPreflightState != preflightState) {
+            lastPreflightState = preflightState
+            RouterLog.event(
+                "DEVICE_PREFLIGHT",
+                "target=${settings.targetAddress?.let(RouterLog::deviceId) ?: "NONE"}; " +
+                    "compatibility=$compatibility; evidence=profile_connection_only; active_audio_verified=false",
+            )
+        }
+        deviceCompatibility.setText(
+            when (compatibility) {
+                CallDeviceCompatibility.NO_TARGET -> R.string.compatibility_no_target
+                CallDeviceCompatibility.CHECKING -> R.string.compatibility_checking
+                CallDeviceCompatibility.CLASSIC_CONNECTED -> R.string.compatibility_classic
+                CallDeviceCompatibility.OTHER_TRANSPORT_CONNECTED -> R.string.compatibility_other
+                CallDeviceCompatibility.NOT_CONNECTED -> R.string.compatibility_disconnected
+                CallDeviceCompatibility.UNKNOWN -> R.string.compatibility_unknown
+            },
+        )
         setupProgress.text =
             resources.getQuantityString(
                 R.plurals.setup_progress,
@@ -443,12 +481,66 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun recordParkedTest() {
+        val target = settings.targetAddress
+        if (target == null) {
+            toast(getString(R.string.authorization_target_required))
+            return
+        }
+        val competitor = settings.competitorAddress
+        val startedAt = System.currentTimeMillis()
+        val sessionAtStart = settings.lastSession?.completedAt
+        val answers = mutableListOf<String>()
+        val questions =
+            listOf(
+                R.string.parked_test_speaker,
+                R.string.parked_test_microphone,
+                R.string.parked_test_navigation,
+                R.string.parked_test_media,
+            )
+        val choices = arrayOf(getString(R.string.test_pass), getString(R.string.test_fail), getString(R.string.test_not_checked))
+        val values = listOf("PASS", "FAIL", "NOT_CHECKED")
+
+        fun ask(index: Int) {
+            AlertDialog
+                .Builder(this)
+                .setTitle("${getString(R.string.parked_test_title, index + 1)}\n${getString(questions[index])}")
+                .setItems(choices) { _, choice ->
+                    answers.add(values[choice])
+                    if (index < questions.lastIndex) {
+                        ask(index + 1)
+                    } else if (target != settings.targetAddress || competitor != settings.competitorAddress) {
+                        toast(getString(R.string.parked_test_changed))
+                    } else {
+                        RouterLog.event(
+                            "USER_PARKED_TEST",
+                            "source=user_report; target=${RouterLog.deviceId(target)}; " +
+                                "speaker=${answers[0]}; microphone=${answers[1]}; " +
+                                "aa_navigation=${answers[2]}; aa_media_resumed=${answers[3]}; " +
+                                "startedAt=$startedAt; sessionAtStart=${sessionAtStart ?: "NONE"}; " +
+                                "sessionAtEnd=${settings.lastSession?.completedAt ?: "NONE"}; " +
+                                "physical_audio_automatically_verified=false; universal_qualification=false",
+                        )
+                        toast(getString(R.string.parked_test_saved))
+                    }
+                }.setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+        AlertDialog
+            .Builder(this)
+            .setTitle(R.string.report_parked_test)
+            .setMessage(R.string.parked_test_intro)
+            .setPositiveButton(R.string.continue_action) { _, _ -> ask(0) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun exportLog() {
         val intent =
             Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "text/plain"
-                putExtra(Intent.EXTRA_TITLE, "car-call-router-${System.currentTimeMillis()}.txt")
+                putExtra(Intent.EXTRA_TITLE, "android-auto-call-switcher-${System.currentTimeMillis()}.txt")
             }
         @Suppress("DEPRECATION")
         startActivityForResult(intent, REQUEST_EXPORT)
@@ -532,6 +624,10 @@ class MainActivity : Activity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (preflight != null) {
+            preflight?.close()
+            preflight = CallDevicePreflight(this) { refresh() }.also { it.start() }
+        }
         refresh()
     }
 

@@ -14,7 +14,7 @@ speaker/microphone behavior remain separate facts.
 | Did diagnostics or safety checks stall the main callback path? | `OPERATION_STARTED`/`OPERATION_FINISHED` for authorization, runtime permissions and call safety; `EVALUATION_TIMING` duration/queue delay | Added here; an unfinished operation identifies the last entered operation, not a proven root cause |
 | Was a timer late because of sleep, dispatch, or an already-expired deadline? | Requested delay, elapsed/uptime deltas, `sleep_delta_ms`, `dispatch_late_ms`, and logical `late_ms` | Separate measurements; a late deadline alone does not prove a blocked Handler |
 | Was Android Auto really observed, or merely inferred? | Provider raw value, status, generation, trigger, pending flag, sample age and query duration | Added here; no Bluetooth/Wi-Fi heuristic authorizes routing; querying does not erase the last observation's age |
-| Was AudioManager evidence unavailable, stale, or failed? | Mode/device type, sample age, query duration, quality and failed operation; separate getter entry/exit logs | Added here; public device type cannot identify BMW versus another SCO device or prove HAL audio |
+| Was AudioManager evidence unavailable, stale, or failed? | Mode/device type, sample age, query duration, quality and failed operation; separate getter entry/exit logs | Added here; public device type cannot identify target versus another SCO device or prove HAL audio |
 | Did the Bluetooth query stall or return ambiguous negative evidence? | Sample quality, proxy availability, trigger, total query duration and per-getter timing with redacted device IDs | Added here; public getters may return false/empty on service failure without throwing, so negative evidence remains ambiguous |
 | Why was selector recovery absent? | Configured/resolved competitor, HFP owner, policy reason, recovery context and result | Already implemented; preserve external-control suppression and exact configured identity |
 | Did success at call start last? | Post-confirmation samples, event-driven changes, fresh HFP sample contract, observation-gap/teardown classification | Already implemented; sparse observations are not continuous physical validation |
@@ -69,7 +69,7 @@ claimed as implemented in the APK.
   accepted request with no SCO change; Samsung's exact behavior remains unverified.
 - The observed other SCO owner is not necessarily Android Auto. Device selection
   and redacted role mapping must establish identity.
-- The report's fixed 800–1200 ms settling recommendation and BMW codec timing are
+- The report's fixed 800–1200 ms settling recommendation and target codec timing are
   not measured guarantees. Current bounded evidence-based settling remains intact.
 - `AudioManager.getCommunicationDevice()` is corroborating framework evidence,
   not proof of physical PCM delivery or microphone quality.

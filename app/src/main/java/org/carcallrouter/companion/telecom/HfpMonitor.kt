@@ -43,6 +43,7 @@ class HfpMonitor(
         val connected: Set<String>,
         val audio: Set<String>,
         val started: Long,
+        val labels: Map<String, Set<String>>,
     )
 
     private val query =
@@ -66,6 +67,7 @@ class HfpMonitor(
             queryDurationMs = now - startedAt
             connected = if (known) requireNotNull(sample).connected else emptySet()
             audioConnected = if (known) requireNotNull(sample).audio else emptySet()
+            deviceLabels = if (known) requireNotNull(sample).labels else emptyMap()
             sampledAt = sample?.started
             sampleSequence++
             RouterLog.event(
@@ -93,6 +95,10 @@ class HfpMonitor(
     var connected: Set<String> = emptySet()
         private set
     var audioConnected: Set<String> = emptySet()
+        private set
+
+    /** Local identity evidence only. Names and aliases never enter exported diagnostics. */
+    var deviceLabels: Map<String, Set<String>> = emptyMap()
         private set
     var sampledAt: Long? = null
         private set
@@ -124,6 +130,7 @@ class HfpMonitor(
                         sampledAt = null
                         connected = emptySet()
                         audioConnected = emptySet()
+                        deviceLabels = emptyMap()
                         headset = proxy as? BluetoothHeadset
                         refresh("proxy_connected")
                     }
@@ -139,6 +146,7 @@ class HfpMonitor(
                         sampleQuality = "PROXY_DISCONNECTED"
                         connected = emptySet()
                         audioConnected = emptySet()
+                        deviceLabels = emptyMap()
                         changed()
                     }
                 }
@@ -177,6 +185,7 @@ class HfpMonitor(
             known = false
             connected = emptySet()
             audioConnected = emptySet()
+            deviceLabels = emptyMap()
             sampledAt = null
             changed()
             return
@@ -211,9 +220,15 @@ class HfpMonitor(
                             observed
                         }.map { it.address.uppercase() }
                         .toSet()
+                val labelQueryStarted = SystemClock.elapsedRealtime()
+                val labels =
+                    devices.associate { device ->
+                        device.address.uppercase() to setOfNotNull(device.name, device.alias).filter { it.isNotBlank() }.toSet()
+                    }
                 val ended = SystemClock.elapsedRealtime()
+                RouterLog.event("HFP_QUERY_STAGE_COMPLETED", "operation=device_labels; elapsedMs=${ended - labelQueryStarted}")
                 RouterLog.event("HFP_QUERY_COMPLETED", "elapsedMs=${ended - started}; deviceCount=${devices.size}")
-                Sample(connected, audio, started)
+                Sample(connected, audio, started, labels)
             }
         if (submitted) lastTrigger = trigger
     }

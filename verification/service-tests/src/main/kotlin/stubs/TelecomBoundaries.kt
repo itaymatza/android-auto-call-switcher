@@ -24,6 +24,7 @@ class HfpMonitor(
     val known get() = started && sampledKnown
     val connected get() = if (started) sampledDevices else emptySet()
     val audioConnected get() = if (started) sampledAudioDevices else emptySet()
+    val deviceLabels get() = if (known) labels.filterKeys { it in connected } else emptyMap()
 
     fun diagnosticFields(): Array<Pair<String, Any?>> =
         arrayOf(
@@ -87,6 +88,7 @@ class HfpMonitor(
     }
 
     companion object {
+        var labels: Map<String, Set<String>> = emptyMap()
         const val MAX_SAMPLE_AGE_MS = 750L
         var queryDelayMs = 0L
         var isKnown = true
