@@ -61,6 +61,7 @@ def find_release(repo: str, tag: str, execute) -> dict | None:
 
 def publish(repo: str, tag: str, sha: str, apk: Path, notes: Path, execute=run) -> None:
     identity = verify_assets(apk.parent, apk.name)
+    source_digest = hashlib.sha256(apk.read_bytes()).hexdigest()
     release = find_release(repo, tag, execute)
     if release is None:
         # The draft can be absent from an immediately repeated listing. Use the
@@ -84,6 +85,8 @@ def publish(repo: str, tag: str, sha: str, apk: Path, notes: Path, execute=run) 
         execute("gh", "release", "download", tag, "--repo", repo, "--dir", temporary,
                 *(arg for name in names for arg in ("--pattern", name)))
         verify_assets(Path(temporary), apk.name, identity)
+        if release["draft"] and hashlib.sha256((Path(temporary) / apk.name).read_bytes()).hexdigest() != source_digest:
+            raise ValueError("Draft APK bytes differ from this source build")
     if release["draft"]:
         execute("gh", "release", "edit", tag, "--repo", repo, "--draft=false", "--prerelease")
 
