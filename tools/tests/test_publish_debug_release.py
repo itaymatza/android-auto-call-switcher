@@ -26,6 +26,8 @@ class ReleaseTest(unittest.TestCase):
         self.metadata = None
         self.calls = []
         self.fail_upload = False
+        self.hide_draft = False
+        (self.root / "notes").write_text("Release notes\nSecond line")
 
     def assets(self, directory, content):
         digest = hashlib.sha256(content).hexdigest()
@@ -38,7 +40,12 @@ class ReleaseTest(unittest.TestCase):
     def execute(self, *args):
         self.calls.append(args)
         if args[1] == "api":
+            if "POST" in args:
+                self.metadata = dict(target_commitish="commit", prerelease=True, draft=True)
+                return json.dumps(self.metadata)
             if "--slurp" in args:
+                if self.hide_draft:
+                    return "[[]]"
                 return json.dumps([[], [dict(self.metadata, tag_name="vbeta-debug.commit")] if self.metadata else []])
             if self.metadata is None or self.metadata["draft"]:
                 raise subprocess.CalledProcessError(1, args, stderr="gh: Not Found (HTTP 404)")
@@ -66,7 +73,16 @@ class ReleaseTest(unittest.TestCase):
         self.publish()
         self.assertFalse(self.metadata["draft"])
         actions = [call[2] for call in self.calls if call[1] == "release"]
-        self.assertEqual(["create", "upload", "download", "edit"], actions)
+        self.assertEqual(["upload", "download", "edit"], actions)
+        create = next(call for call in self.calls if "POST" in call)
+        self.assertIn("draft=true", create)
+        self.assertIn("prerelease=true", create)
+        self.assertIn("body=Release notes\nSecond line", create)
+
+    def test_new_draft_need_not_be_immediately_visible_in_release_listing(self):
+        self.hide_draft = True
+        self.publish()
+        self.assertFalse(self.metadata["draft"])
 
     def test_partial_upload_stays_draft_and_retry_replaces_whole_set(self):
         self.fail_upload = True
