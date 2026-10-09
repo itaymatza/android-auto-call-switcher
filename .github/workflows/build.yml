@@ -40,7 +40,7 @@ jobs:
       - name: Test policy, service callback, trace, and capture contracts
         run: |
           python3 -m unittest tools.tests.test_analyze_device_trace tools.tests.test_analyze_parked_reports tools.tests.test_capture_device_run tools.tests.test_extract_new_app_events
-          bash gradlew :core:test :verification:service-tests:test :verification:bluetooth-tests:test :verification:call-safety-tests:test --stacktrace --console=plain
+          bash gradlew -PTEST_JAVA_VERSION=${{ matrix.java }} :core:test :verification:service-tests:test :verification:bluetooth-tests:test :verification:call-safety-tests:test --stacktrace --console=plain
 
   build:
     runs-on: ubuntu-latest
