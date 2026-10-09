@@ -93,6 +93,19 @@ class ReleaseTest(unittest.TestCase):
         self.publish()
         self.assertFalse(self.metadata["draft"])
 
+    def test_consistent_replacement_assets_cannot_publish_a_different_draft_apk(self):
+        def replace_after_upload(*args):
+            result = self.execute(*args)
+            if args[1:3] == ("release", "upload"):
+                self.assets(self.remote, b"different APK with identical reported identity")
+            return result
+
+        with self.assertRaisesRegex(ValueError, "Draft APK bytes differ"):
+            release.publish("owner/repo", "vbeta-debug.commit", "commit", self.apk,
+                            self.root / "notes", replace_after_upload)
+        self.assertTrue(self.metadata["draft"])
+        self.assertFalse(any(call[1:3] == ("release", "edit") for call in self.calls))
+
     def test_published_retry_preserves_original_bytes_even_when_rebuild_differs(self):
         self.publish()
         self.assets(self.local, b"another build of same source")
