@@ -11,73 +11,63 @@ class EndpointIdentityTest {
     private val target = Candidate("endpoint-a", "Car Hands-Free")
     private val other = Candidate("endpoint-b", "Projection Unit")
 
-    @Test fun uniqueNameMatchWinsWithMultipleConnectedDevices() {
-        val result = EndpointIdentity.resolve("  CAR  hands-free ", listOf(target, other), true, 2)
-        assertTrue(result is Resolution.Matched)
-        result as Resolution.Matched
+    private fun resolve(
+        labels: Set<String>,
+        candidates: List<Candidate> = listOf(target, other),
+        connected: Boolean = true,
+        count: Int = 2,
+        others: Set<String> = setOf(other.label),
+        known: Boolean = true,
+    ) = EndpointIdentity.resolve(candidates, connected, count, labels, others, known)
+
+    @Test fun uniqueCurrentNameMatchWinsWithMultipleConnectedDevices() {
+        val result = resolve(setOf("  CAR  hands-free ")) as Resolution.Matched
         assertEquals(target, result.candidate)
         assertEquals(Basis.UNIQUE_LABEL, result.basis)
     }
 
     @Test fun duplicateNamesFailClosed() {
-        val result =
-            EndpointIdentity.resolve(
-                "Car Hands-Free",
-                listOf(target, Candidate("endpoint-c", "car hands-free")),
-                true,
-                2,
-            )
-        assertTrue(result is Resolution.Unavailable)
+        assertTrue(resolve(setOf(target.label), listOf(target, Candidate("c", "car hands-free"))) is Resolution.Unavailable)
     }
 
     @Test fun disconnectedTargetFailsClosed() {
-        assertTrue(EndpointIdentity.resolve(target.label, listOf(target), false, 0) is Resolution.Unavailable)
+        assertTrue(resolve(setOf(target.label), listOf(target), false, 0) is Resolution.Unavailable)
     }
 
     @Test fun singleEndpointAndSingleHfpCanResolveOemRenamedEndpoint() {
-        val result = EndpointIdentity.resolve("Saved alias", listOf(target), true, 1)
-        assertTrue(result is Resolution.Matched)
-        assertEquals(Basis.SINGLE_CONNECTED_HFP, (result as Resolution.Matched).basis)
+        val result = resolve(setOf("Different current alias"), listOf(target), count = 1) as Resolution.Matched
+        assertEquals(Basis.SINGLE_CONNECTED_HFP, result.basis)
     }
 
     @Test fun unknownNameWithMultipleEndpointsFailsClosed() {
-        assertTrue(
-            EndpointIdentity.resolve("Unknown", listOf(target, other), true, 2) is Resolution.Unavailable,
-        )
+        assertTrue(resolve(setOf("Unknown")) is Resolution.Unavailable)
     }
 
     @Test fun noTelecomEndpointFailsClosed() {
-        assertTrue(EndpointIdentity.resolve(target.label, emptyList(), true, 1) is Resolution.Unavailable)
+        assertTrue(resolve(setOf(target.label), emptyList(), count = 1) is Resolution.Unavailable)
     }
 
     @Test fun whitespaceAndCaseNormalizationDoesNotMatchSubstrings() {
         val exact = Candidate("exact", "  CAR\tHANDS-FREE  ")
         val prefix = Candidate("prefix", "Car Hands-Free Extra")
-        val result = EndpointIdentity.resolve("car hands-free", listOf(exact, prefix), true, 2)
-        assertEquals(exact, (result as Resolution.Matched).candidate)
+        assertEquals(exact, (resolve(setOf("car hands-free"), listOf(exact, prefix)) as Resolution.Matched).candidate)
     }
 
     @Test fun fallbackRequiresExactlyOneConnectedHfpDevice() {
         for (count in listOf(-1, 0, 2, Int.MAX_VALUE)) {
-            assertTrue(
-                EndpointIdentity.resolve("Renamed", listOf(target), true, count) is Resolution.Unavailable,
-            )
+            assertTrue(resolve(setOf("Renamed"), listOf(target), count = count) is Resolution.Unavailable)
         }
     }
 
     @Test fun matchingLabelStillRequiresTargetHfpConnection() {
-        val result = EndpointIdentity.resolve(target.label, listOf(target), false, 1)
-        assertEquals(
-            "Selected device is not connected for calls",
-            (result as Resolution.Unavailable).reason,
-        )
+        val result = resolve(setOf(target.label), listOf(target), false, 1) as Resolution.Unavailable
+        assertEquals("Selected device is not connected for calls", result.reason)
     }
 
     @Test fun selectedNonCarDevicesResolveWithoutBrandOrRoleHeuristics() {
         for (label in listOf("Earbuds", "Work Headset", "Desk Speakerphone", "Vehicle Hands-Free", "אוזניות")) {
             val chosen = Candidate("chosen", label)
-            val candidates = listOf(other, target, chosen)
-            val result = EndpointIdentity.resolve(label, candidates, true, 3) as Resolution.Matched
+            val result = resolve(setOf(label), listOf(other, target, chosen), count = 3) as Resolution.Matched
             assertEquals(chosen, result.candidate)
             assertEquals(Basis.UNIQUE_LABEL, result.basis)
         }
@@ -86,51 +76,45 @@ class EndpointIdentityTest {
     @Test fun knownCarNameNeverOverridesTheChosenHeadset() {
         val headset = Candidate("headset", "My Headset")
         val car = Candidate("car", "BMW")
-        val result = EndpointIdentity.resolve(headset.label, listOf(car, headset, other), true, 3)
-        assertEquals(headset, (result as Resolution.Matched).candidate)
+        assertEquals(headset, (resolve(setOf(headset.label), listOf(car, headset, other), count = 3) as Resolution.Matched).candidate)
     }
 
-    @Test fun renamedDeviceUsesCurrentLabelsInsteadOfStaleSavedName() {
+    @Test fun renamedDeviceUsesOnlyCurrentLabels() {
         val renamed = Candidate("chosen", "New headset name")
         val oldNameNowBelongsToAnotherDevice = Candidate("other", "Old name")
         val result =
-            EndpointIdentity.resolve(
-                "Old name",
+            resolve(
+                setOf("New headset name", "Headset alias"),
                 listOf(renamed, oldNameNowBelongsToAnotherDevice),
-                true,
-                2,
-                liveTargetLabels = setOf("New headset name", "Headset alias"),
-                otherConnectedLabels = setOf("Old name"),
+                others = setOf("Old name"),
             )
         assertEquals(renamed, (result as Resolution.Matched).candidate)
     }
 
     @Test fun duplicateConnectedDeviceNamesFailEvenWithOneMatchingEndpoint() {
-        val result =
-            EndpointIdentity.resolve(
-                target.label,
-                listOf(target, other),
-                true,
-                2,
-                liveTargetLabels = setOf(target.label),
-                otherConnectedLabels = setOf("  CAR HANDS-FREE  "),
-            )
-        assertTrue(result is Resolution.Unavailable)
+        assertTrue(resolve(setOf(target.label), others = setOf("  CAR HANDS-FREE  ")) is Resolution.Unavailable)
     }
 
     @Test fun deviceNameAndLocalAliasCanBothMatchCurrentEndpoint() {
         for (label in listOf("Factory headset name", "My alias")) {
             val endpoint = Candidate("headset", label)
-            val result =
-                EndpointIdentity.resolve(
-                    "Saved old alias",
-                    listOf(endpoint, other),
-                    true,
-                    2,
-                    liveTargetLabels = setOf("Factory headset name", "My alias"),
-                    otherConnectedLabels = setOf(other.label),
-                )
-            assertEquals(endpoint, (result as Resolution.Matched).candidate)
+            val result = resolve(setOf("Factory headset name", "My alias"), listOf(endpoint, other)) as Resolution.Matched
+            assertEquals(endpoint, result.candidate)
         }
+    }
+
+    @Test fun staleOrIncompleteLabelEvidenceCannotMatchAnOtherwiseUniqueName() {
+        assertTrue(resolve(setOf(target.label), known = false) is Resolution.Unavailable)
+        assertTrue(resolve(emptySet()) is Resolution.Unavailable)
+        assertTrue(resolve(setOf(" \t")) is Resolution.Unavailable)
+    }
+
+    @Test fun unknownLabelsAllowOnlyOneDeviceAndOneEndpointTopology() {
+        assertEquals(
+            Basis.SINGLE_CONNECTED_HFP,
+            (resolve(emptySet(), listOf(target), count = 1, known = false) as Resolution.Matched).basis,
+        )
+        assertTrue(resolve(setOf(target.label), listOf(target), count = 2, known = false) is Resolution.Unavailable)
+        assertTrue(resolve(setOf(target.label), count = 1, known = false) is Resolution.Unavailable)
     }
 }

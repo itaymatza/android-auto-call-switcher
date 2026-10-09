@@ -49,7 +49,12 @@ private fun reset() {
     CellularClassifier.pending = false
     CellularClassifier.instances.clear()
     HfpMonitor.instances.clear()
-    HfpMonitor.labels = emptyMap()
+    HfpMonitor.labels =
+        mapOf(
+            TARGET to setOf(target.endpointName.toString()),
+            COMPETING to setOf(competing.endpointName.toString()),
+            OTHER to setOf(other.endpointName.toString()),
+        )
     HfpMonitor.queryDelayMs = 0L
     HfpMonitor.isKnown = true
     HfpMonitor.devices = setOf(TARGET, COMPETING, OTHER)
@@ -1126,12 +1131,49 @@ fun main(args: Array<String>) {
                         mapOf(
                             TARGET to setOf("Target test device"),
                             OTHER to setOf("Target test device"),
+                            COMPETING to setOf("Competing test device"),
                         )
                     f.activateAndSettle()
                     countEquals(f, 0)
                     TestQueue.advanceTo(11000)
                     countEquals(f, 0)
                     check(SessionBridge.status.contains("Connected Bluetooth devices share"))
+                }
+            },
+            "pending_live_names_never_route_using_saved_target_label" to {
+                Fixture().use { f ->
+                    HfpMonitor.labels = emptyMap()
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    HfpMonitor.labels =
+                        mapOf(
+                            TARGET to setOf(target.endpointName.toString()),
+                            COMPETING to setOf(competing.endpointName.toString()),
+                            OTHER to setOf(other.endpointName.toString()),
+                        )
+                    HfpMonitor.emit(setOf(TARGET, COMPETING, OTHER))
+                    f.flush()
+                    TestQueue.advanceTo(TestQueue.now + 500)
+                    countEquals(f, 1)
+                }
+            },
+            "missing_competitor_name_cannot_prove_target_identity" to {
+                Fixture().use { f ->
+                    HfpMonitor.labels = mapOf(TARGET to setOf(target.endpointName.toString()))
+                    f.activateAndSettle()
+                    TestQueue.advanceTo(11000)
+                    countEquals(f, 0)
+                }
+            },
+            "name_evidence_loss_after_request_does_not_fight_or_map_another_peer" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    countEquals(f, 1)
+                    HfpMonitor.labels = emptyMap()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(1000)
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("reason=TARGET_AUDIO_CONFIRMED"))
                 }
             },
             "adapter_rejects_old_callback_instance_with_reused_uuid" to {

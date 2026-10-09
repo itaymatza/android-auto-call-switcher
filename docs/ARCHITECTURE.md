@@ -113,3 +113,13 @@ permit a request; the policy waits within the existing action deadline and suspe
 is lost after a request. Projection updates invalidate in-flight observations by generation;
 queries taking more than 750 ms cannot provide positive evidence. Stable projection evidence
 remains event-driven rather than expiring merely because a connection stays unchanged.
+
+### HFP observation and live identity
+
+`HfpMonitor` owns three independent process-wide bounded, zero-queue workers: exact HFP
+connection/SCO reads, live name/alias inspection and optional power diagnostics. Bluetooth
+events and proxy lifecycle changes invalidate both cached and in-flight generations. An old
+query drains its slot before a fresh read; invalidation never queues behind a stalled Binder.
+Names and aliases remain local, expire independently after 750 ms, and must be complete for
+multiple-device matching. Setup names do not authorize routing. Metadata cannot confirm SCO,
+and its loss cannot turn an unidentified endpoint into a proven user/competitor selection.

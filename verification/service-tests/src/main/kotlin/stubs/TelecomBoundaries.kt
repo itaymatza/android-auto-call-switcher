@@ -54,6 +54,7 @@ class HfpMonitor(
     val connected get() = if (started) sampledDevices else emptySet()
     val audioConnected get() = if (started) sampledAudioDevices else emptySet()
     val deviceLabels get() = if (known) labels.filterKeys { it in connected } else emptyMap()
+    val labelsKnown get() = known && deviceLabels.keys == connected && deviceLabels.values.all { it.isNotEmpty() }
 
     fun diagnosticFields(): Array<Pair<String, Any?>> =
         arrayOf(

@@ -21,19 +21,26 @@ object EndpointIdentity {
     enum class Basis { UNIQUE_LABEL, SINGLE_CONNECTED_HFP }
 
     fun resolve(
-        savedLabel: String,
         candidates: List<Candidate>,
         targetHfpConnected: Boolean,
         connectedHfpCount: Int,
-        liveTargetLabels: Set<String> = emptySet(),
-        otherConnectedLabels: Set<String> = emptySet(),
+        liveTargetLabels: Set<String>,
+        otherConnectedLabels: Set<String>,
+        liveLabelsKnown: Boolean,
     ): Resolution {
         if (!targetHfpConnected) return Resolution.Unavailable("Selected device is not connected for calls")
         if (candidates.isEmpty()) return Resolution.Unavailable("Telecom has not offered a Bluetooth call endpoint")
 
-        // Current labels come from the exact connected Bluetooth address. A saved name may
-        // have changed since setup, so it must not override current device identity evidence.
-        val labels = (liveTargetLabels.ifEmpty { setOf(savedLabel) }).map(::normalize).filter { it.isNotEmpty() }.toSet()
+        // A saved label cannot prove live identity. Only topology is usable when labels
+        // are pending, incomplete or stale; multiple-device mapping must wait for all names.
+        if (!liveLabelsKnown || liveTargetLabels.none { normalize(it).isNotEmpty() }) {
+            return if (candidates.size == 1 && connectedHfpCount == 1) {
+                Resolution.Matched(candidates.single(), Basis.SINGLE_CONNECTED_HFP)
+            } else {
+                Resolution.Unavailable("Waiting for fresh names and aliases of all connected call devices")
+            }
+        }
+        val labels = liveTargetLabels.map(::normalize).filter { it.isNotEmpty() }.toSet()
         val conflicts = otherConnectedLabels.map(::normalize).toSet()
         val labelMatches = candidates.filter { normalize(it.label) in labels }
         if (labelMatches.any { normalize(it.label) in conflicts }) {
