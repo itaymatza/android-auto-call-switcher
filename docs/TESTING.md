@@ -31,12 +31,26 @@ late voice-stream activation and a bounded HFP query budget.
 
 These checks exercise decision rules and lifecycle behavior. They do not install an APK, emulate Android Telecom, validate protected-permission admission, or test a real Bluetooth stack, microphone, projection host, headset, or vehicle.
 
+## Bluetooth monitor lifecycle checks
+
+`bash gradlew :verification:bluetooth-tests:check` compiles the actual production `HfpMonitor`
+and `CallDevicePreflight` against small Android boundary fakes. Deterministic worker and owner
+queues exercise permission revocation between read and completion, revoke/regrant invalidation,
+proxy replacement/disconnection, stalled reads, late callbacks after close, sleep-time expiry,
+and independent LE group inspection. The production defaults still use bounded process-wide
+workers; injected executors are internal test seams.
+
+CI runs these tests on JDK 17 and 21 and includes them in build, release and installation checks.
+JaCoCo reports cover the production monitors, excluding the boundary fakes. These host checks
+verify our lifecycle code; real Binder, Bluetooth/OEM behavior and physical audio still require
+parked-device qualification.
+
 ## Android build and static checks
 
 With a suitable Android SDK:
 
 ```sh
-bash gradlew :core:check :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --stacktrace --console=plain
+bash gradlew :core:check :verification:service-tests:check :verification:bluetooth-tests:check :app:ktlintCheck :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --stacktrace --console=plain
 ```
 
 The repository workflow runs that command on pushes, merge-queue candidates, and pull requests with
@@ -46,7 +60,7 @@ The policy/service/trace host contracts run independently on JDK 17 and 21 for f
 runtime-compatibility coverage.
 
 Kotlin formatting is enforced with ktlint's official style and a 140-character maximum. Run
-`bash gradlew :app:ktlintFormat :core:ktlintFormat :verification:service-tests:ktlintFormat` before
+`bash gradlew :app:ktlintFormat :core:ktlintFormat :verification:service-tests:ktlintFormat :verification:bluetooth-tests:ktlintFormat` before
 committing broad mechanical changes. Kotlin compiler warnings and Android lint warnings are treated
 as errors; the deferred target-SDK finding is recorded in `app/lint-baseline.xml`, so new source
 findings fail the build. Dependency availability is handled by weekly Dependabot pull requests,

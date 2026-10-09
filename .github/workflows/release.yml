@@ -58,6 +58,7 @@ jobs:
           :app:ktlintCheck
           :app:testDebugUnitTest
           :verification:service-tests:check
+          :verification:bluetooth-tests:check
           :app:lintRelease
           :app:assembleRelease
           --stacktrace --console=plain

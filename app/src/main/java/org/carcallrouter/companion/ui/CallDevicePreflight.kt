@@ -22,8 +22,10 @@ import java.util.concurrent.TimeUnit
 
 /** Read-only, foreground-only profile inspection. Does not authorize a routing request. */
 @SuppressLint("MissingPermission")
-class CallDevicePreflight(
+class CallDevicePreflight internal constructor(
     private val context: Context,
+    queryWorker: Executor = worker,
+    leGroupWorker: Executor = groupWorker,
     private val changed: () -> Unit,
 ) : AutoCloseable {
     private val handler = Handler(Looper.getMainLooper())
@@ -42,12 +44,13 @@ class CallDevicePreflight(
     private val groupExpire = Runnable { changed() }
     private val groupQuery =
         SingleFlightQuery<Groups>(
-            groupWorker,
+            leGroupWorker,
             Executor { handler.post(it) },
             SystemClock::elapsedRealtime,
         ) { result, _, started ->
             groupSampledAt = SystemClock.elapsedRealtime()
-            groupSnapshot = if (groupSampledAt - started <= MAX_QUERY_AGE_MS) result.getOrNull() else null
+            groupSnapshot =
+                if (Access.bluetoothGranted(context) && groupSampledAt - started <= MAX_QUERY_AGE_MS) result.getOrNull() else null
             handler.removeCallbacks(groupExpire)
             handler.postDelayed(groupExpire, MAX_OBSERVATION_AGE_MS + 1)
             changed()
@@ -61,13 +64,13 @@ class CallDevicePreflight(
 
     private val query =
         SingleFlightQuery<Map<Int, Set<String>?>>(
-            worker,
+            queryWorker,
             Executor { handler.post(it) },
             SystemClock::elapsedRealtime,
         ) { result, _, started ->
             sampledAt = SystemClock.elapsedRealtime()
             snapshot =
-                if (SystemClock.elapsedRealtime() - started <= MAX_QUERY_AGE_MS) {
+                if (Access.bluetoothGranted(context) && SystemClock.elapsedRealtime() - started <= MAX_QUERY_AGE_MS) {
                     result.getOrNull() ?: unknownConnections()
                 } else {
                     unknownConnections()

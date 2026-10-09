@@ -16,3 +16,4 @@ rootProject.name = "Android Auto Call Switcher"
 include(":app")
 include(":core")
 include(":verification:service-tests")
+include(":verification:bluetooth-tests")

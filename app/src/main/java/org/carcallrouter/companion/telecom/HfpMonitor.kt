@@ -20,8 +20,9 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 @SuppressLint("MissingPermission")
-class HfpMonitor(
+class HfpMonitor internal constructor(
     private val context: Context,
+    queryWorker: Executor = worker,
     private val changed: () -> Unit,
 ) : AutoCloseable {
     private val handler = Handler(Looper.getMainLooper())
@@ -48,16 +49,19 @@ class HfpMonitor(
 
     private val query =
         SingleFlightQuery<Sample>(
-            worker = worker,
+            worker = queryWorker,
             owner = Executor { handler.post(it) },
             clock = SystemClock::elapsedRealtime,
         ) { result, queuedAt, startedAt ->
             val now = SystemClock.elapsedRealtime()
             val sample = result.getOrNull()
             // A query which itself stalled is not fresh evidence, even if it just returned.
-            known = sample != null && now - sample.started <= MAX_SAMPLE_AGE_MS
+            val permitted = Access.bluetoothGranted(context)
+            known = permitted && sample != null && now - sample.started <= MAX_SAMPLE_AGE_MS
             sampleQuality =
-                if (sample == null) {
+                if (!permitted) {
+                    "PERMISSION_MISSING"
+                } else if (sample == null) {
                     "ERROR"
                 } else if (known) {
                     "OBSERVED"
@@ -68,7 +72,7 @@ class HfpMonitor(
             connected = if (known) requireNotNull(sample).connected else emptySet()
             audioConnected = if (known) requireNotNull(sample).audio else emptySet()
             deviceLabels = if (known) requireNotNull(sample).labels else emptyMap()
-            sampledAt = sample?.started
+            sampledAt = if (permitted) sample?.started else null
             sampleSequence++
             RouterLog.event(
                 "HFP_QUERY_TIMING",
@@ -144,6 +148,7 @@ class HfpMonitor(
                         headset = null
                         known = false
                         sampleQuality = "PROXY_DISCONNECTED"
+                        sampledAt = null
                         connected = emptySet()
                         audioConnected = emptySet()
                         deviceLabels = emptyMap()
@@ -181,6 +186,7 @@ class HfpMonitor(
         if (closed) return
         val proxy = headset
         if (proxy == null || !Access.bluetoothGranted(context)) {
+            query.invalidate()
             sampleQuality = if (proxy == null) "PROXY_UNAVAILABLE" else "PERMISSION_MISSING"
             known = false
             connected = emptySet()
