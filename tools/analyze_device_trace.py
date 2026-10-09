@@ -59,6 +59,10 @@ class SessionSummary:
     endpoint_latency_ms: int | None
     hfp_audio_confirmed: bool
     hfp_latency_ms: int | None
+    answer_to_hfp_ms: int | None
+    dialing_to_hfp_ms: int | None
+    connected_duration_ms: int | None
+    max_observation_gap_ms: int | None
     final_phase: str
     final_reason: str
     termination: str
@@ -278,6 +282,11 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
         derived_confirmation = (
             "TARGET_HFP_AUDIO" if hfp else "TELECOM_ENDPOINT" if endpoint else "NONE"
         )
+        def numeric(event: TraceEvent | None, field: str) -> int | None:
+            value = event.fields.get(field, "") if event else ""
+            return int(value) if value.isdigit() else None
+
+        duration = _first(session_events, "CALL_DURATION_SUMMARY")
         summaries.append(SessionSummary(
             session=session,
             status=status,
@@ -315,6 +324,10 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             endpoint_latency_ms=endpoint.elapsed_ms if endpoint else None,
             hfp_audio_confirmed=hfp is not None,
             hfp_latency_ms=hfp.elapsed_ms if hfp else None,
+            answer_to_hfp_ms=numeric(hfp, "since_answer_ms"),
+            dialing_to_hfp_ms=numeric(hfp, "since_dialing_ms"),
+            connected_duration_ms=numeric(duration or finish, "connected_duration_ms"),
+            max_observation_gap_ms=numeric(finish, "max_observation_gap_ms"),
             final_phase=finish.fields.get("phase", "unknown") if finish else "unknown",
             final_reason=finish.fields.get("reason", "unknown") if finish else "unknown",
             termination=finish.fields.get("termination", "open") if finish else "open",

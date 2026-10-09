@@ -185,6 +185,12 @@ class HfpMonitor(
             query.submit {
                 val started = SystemClock.elapsedRealtime()
                 RouterLog.event("HFP_QUERY_STARTED", "trigger=$trigger")
+                val adapterState = runCatching { adapter?.state }.getOrNull()
+                RouterLog.event(
+                    "BLUETOOTH_ADAPTER_SNAPSHOT",
+                    "state=${adapterState ?: "UNKNOWN"}; trigger=$trigger; sampledAt=$started; " +
+                        "profilePolicy=UNAVAILABLE_PUBLIC_API; connectionOrder=NOT_OBSERVED",
+                )
                 val devices = proxy.connectedDevices
                 RouterLog.event(
                     "HFP_QUERY_STAGE_COMPLETED",

@@ -164,6 +164,21 @@ class RoutingPolicy(
         val diagnosticInitialRoute = initial
     }
 
+    /** Answer starts a new evidence window, without replacing an outstanding dialing request. */
+    fun answer(
+        now: Long,
+        initial: Route,
+    ) {
+        if (phase == Phase.SUSPENDED) return
+        if (requests > 0 && phase in setOf(Phase.VERIFYING, Phase.STABILIZING)) {
+            actionDeadline = now + actionWindowMs
+            targetAudioSince = null
+            lastPositiveSampleAt = null
+            return
+        }
+        begin(now, initial)
+    }
+
     fun suspend(
         reason: String,
         code: ReasonCode = ReasonCode.EXTERNAL_SUSPEND,

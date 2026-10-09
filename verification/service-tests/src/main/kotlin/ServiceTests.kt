@@ -137,6 +137,33 @@ private fun countEquals(
 fun main(args: Array<String>) {
     val tests =
         listOf<Pair<String, () -> Unit>>(
+            "dialing_boundary_is_captured_with_early_routing" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    countEquals(f, 1)
+                    check(RouterLog.events.any { it.first == "CALL_BOUNDARY_SNAPSHOT" && "state=DIALING" in it.second })
+                    check(RouterLog.events.any { "bluetoothPriority=UNAVAILABLE_PUBLIC_API" in it.second })
+                }
+            },
+            "short_active_race_preserves_call_timing_evidence" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(700)
+                    f.call.deliverState(Call.STATE_ACTIVE)
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.flush()
+                    countEquals(f, 1)
+                    check(
+                        RouterLog.events.any {
+                            it.first == "CALL_BOUNDARY_SNAPSHOT" && "state=ACTIVE" in it.second && "sinceAddedMs=700" in it.second
+                        },
+                    )
+                    check(
+                        RouterLog.events.any {
+                            it.first == "CALL_BOUNDARY_SNAPSHOT" && "state=DISCONNECTED" in it.second && "sinceActiveMs=0" in it.second
+                        },
+                    )
+                }
+            },
             "initial_projection_false_is_rechecked_before_first_request" to {
                 Fixture(projected = false).use { f ->
                     f.activateAndSettle()
@@ -325,7 +352,7 @@ fun main(args: Array<String>) {
                     countEquals(f, 1)
                     val after = HfpMonitor.refreshes
                     TestQueue.advanceTo(10_000)
-                    check(HfpMonitor.refreshes == after)
+                    check(HfpMonitor.refreshes > after)
                     countEquals(f, 1)
                 }
             },
@@ -381,7 +408,7 @@ fun main(args: Array<String>) {
                     val periodicQueries = HfpMonitor.refreshes - baseline
                     check(periodicQueries in 10..18) { "Unexpected four-second HFP query budget: $periodicQueries" }
                     TestQueue.advanceTo(20_000)
-                    check(HfpMonitor.refreshes - baseline == periodicQueries)
+                    check(HfpMonitor.refreshes - baseline in (periodicQueries + 1)..(periodicQueries + 2))
                     countEquals(f, 1)
                 }
             },
@@ -852,7 +879,7 @@ fun main(args: Array<String>) {
                     )
                     val after = HfpMonitor.refreshes
                     TestQueue.advanceTo(20_000)
-                    check(HfpMonitor.refreshes == after)
+                    check(HfpMonitor.refreshes > after)
                     countEquals(f, 1)
                     f.service.onCallRemoved(f.call)
                     f.flush()
@@ -1210,6 +1237,197 @@ fun main(args: Array<String>) {
                         },
                     )
                     countEquals(f, 0)
+                }
+            },
+            "early_routing_then_answer_keeps_one_request_if_audio_stays_bmw" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    countEquals(f, 1)
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(1200)
+                    TestQueue.advanceTo(1500)
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("BMW confirmed=true"))
+                }
+            },
+            "answer_during_pending_dialing_request_does_not_replace_it" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(900)
+                    countEquals(f, 1)
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(1200)
+                    check(SessionBridge.status.contains("BMW confirmed=true"))
+                }
+            },
+            "long_dialing_timeout_then_answer_has_a_separate_bounded_pass" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    TestQueue.advanceTo(5000)
+                    countEquals(f, 1)
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(5500)
+                    countEquals(f, 2)
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(5800)
+                    repeat(20) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    countEquals(f, 2)
+                }
+            },
+            "answer_time_takeover_after_dialing_confirmation_has_one_recovery" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    // No explicit external request: simulate platform answer-time ownership.
+                    HfpMonitor.audioDevices = setOf(COMPETING)
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(1300)
+                    countEquals(f, 2)
+                    repeat(25) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    countEquals(f, 2)
+                }
+            },
+            "explicit_external_choice_during_dialing_prevents_answer_reassertion" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    f.service.onCallEndpointRequested(competing)
+                    f.flush()
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(2000)
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
+                }
+            },
+            "speaker_choice_during_dialing_is_preserved_at_answer" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    f.route(speaker)
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(2000)
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
+                }
+            },
+            "unanswered_dialing_stops_without_answer_recovery" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    TestQueue.advanceTo(2000)
+                    countEquals(f, 1)
+                    check(RouterLog.events.any { "event=CALL_DURATION_SUMMARY" in it.second && "connected_duration_ms=null" in it.second })
+                }
+            },
+            "late_silent_audio_loss_is_observed_without_fighting_user" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    repeat(40) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    HfpMonitor.audioDevices = setOf(COMPETING)
+                    repeat(24) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    countEquals(f, 1)
+                    check(
+                        RouterLog.events.any {
+                            "event=CALL_AUDIO_OBSERVATION" in it.second &&
+                                "target_sco=false" in it.second &&
+                                "since_answer_ms=" in it.second
+                        },
+                    )
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterSettings(f.service).lastSession?.confirmation == "TARGET_HFP_AUDIO_UNSTABLE")
+                }
+            },
+            "full_call_observation_is_bounded_and_stops_on_aa_disconnect" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    repeat(240) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    check(HfpMonitor.refreshes in 30..80)
+                    ProjectionMonitor.emit(false)
+                    f.flush()
+                    val before = HfpMonitor.refreshes
+                    repeat(30) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    check(HfpMonitor.refreshes == before)
+                    countEquals(f, 1)
+                }
+            },
+            "wrong_audio_report_is_not_cleared_by_route_now" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    f.service.reportWrongAudio()
+                    f.service.routeNow()
+                    repeat(4) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterLog.events.any { "event=SESSION_FINISHED" in it.second && "user_reported_wrong_audio=true" in it.second })
+                    check(RouterSettings(f.service).lastSession?.confirmation == "TARGET_HFP_AUDIO_UNSTABLE")
+                }
+            },
+            "request_events_include_answer_relative_and_dialing_relative_timing" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    check(
+                        RouterLog.events.any {
+                            "event=REQUEST_SUBMITTED" in it.second &&
+                                "stage=DIALING" in it.second &&
+                                "since_dialing_ms=500" in it.second &&
+                                "since_answer_ms=null" in it.second
+                        },
+                    )
+                    f.activateWithoutSettling()
+                    f.service.onCallEndpointRequested(target)
+                    f.flush()
+                    check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "since_answer_ms=0" in it.second })
+                }
+            },
+            "late_service_shutdown_marks_observation_incomplete" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    f.service.onDestroy()
+                    check(
+                        RouterLog.events.any {
+                            "event=SESSION_FINISHED" in it.second &&
+                                "termination=service_stopped" in it.second &&
+                                "observation_incomplete=true" in it.second
+                        },
+                    )
+                }
+            },
+            "accepted_target_endpoint_without_sco_remains_failure_for_full_call" to {
+                Fixture(initialEndpoint = target).use { f ->
+                    RouterSettings(f.service).setCompetitor(null, null)
+                    f.flush()
+                    f.activateAndSettle()
+                    f.flush()
+                    repeat(240) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("BMW confirmed=false"))
+                    check(SessionBridge.status.contains("TARGET_AUDIO_NOT_CONFIRMED"))
+                    check(RouterLog.events.any { "event=CALL_AUDIO_OBSERVATION" in it.second && "target_sco=false" in it.second })
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterLog.events.none { "event=TARGET_HFP_AUDIO_CONFIRMED" in it.second })
+                }
+            },
+            "endpoint_request_correlation_never_claims_caller_identity" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.service.onCallEndpointRequested(target)
+                    f.flush()
+                    check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "request_source=UNKNOWN" in it.second })
                 }
             },
             "projection_provider_evidence_and_single_failure_incident_are_exported" to {

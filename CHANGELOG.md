@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0-beta.14
+
+- Request BMW during outgoing dialing; revalidate at answer with no overlapping request and at most two automatic target requests per call. Preserve explicit route choices.
+- Continue bounded HFP observation throughout active projected calls, including routing failures; record gaps and late audio loss without an automatic routing fight.
+- Add per-event dialing/answer timing, observed connected duration, request stage/budget, unknown callback source, and persistent user wrong-audio reports.
+- Add Bluetooth adapter/mute/audio inventories and an export investigation guide that states unavailable settings and physical-audio limits.
+- Expand deterministic service and core tests for early routing, pending requests at answer, long dialing, silent takeover, and callback ordering.
+
 ## 0.3.0-beta.13
 
 - Run HFP and optional audio-framework queries on bounded single-flight workers; ignore invalidated results after proxy changes and teardown.

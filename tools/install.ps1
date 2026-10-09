@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
 if (-not $ApplicationId) { $ApplicationId = 'org.carcallrouter.companion' }
-if (-not $VersionCode) { $VersionCode = '15' }
-if (-not $VersionName) { $VersionName = '0.3.0-beta.13' }
+if (-not $VersionCode) { $VersionCode = '16' }
+if (-not $VersionName) { $VersionName = '0.3.0-beta.14' }
 $SourceActivity = 'org.carcallrouter.companion.ui.MainActivity'
 if (-not $env:ANDROID_HOME -and $env:LOCALAPPDATA) {
     $Candidate = Join-Path $env:LOCALAPPDATA 'Android\Sdk'

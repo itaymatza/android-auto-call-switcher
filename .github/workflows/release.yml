@@ -68,7 +68,7 @@ jobs:
         run: >-
           bash tools/verify-apk.sh
           app/build/outputs/apk/release/app-release.apk
-          org.carcallrouter.companion 15 0.3.0-beta.13 34 36 false
+          org.carcallrouter.companion 16 0.3.0-beta.14 34 36 false
       - name: Compute APK digest
         run: sha256sum app/build/outputs/apk/release/app-release.apk > app-release.apk.sha256
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8

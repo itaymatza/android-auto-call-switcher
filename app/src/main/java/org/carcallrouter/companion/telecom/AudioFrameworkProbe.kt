@@ -13,7 +13,7 @@ import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-/** Read-only public audio-framework evidence. It cannot identify a Bluetooth endpoint by MAC. */
+/** Read-only framework evidence; device inventories do not prove physical call input/output. */
 internal class AudioFrameworkProbe(
     context: Context,
 ) : AutoCloseable {
@@ -29,6 +29,7 @@ internal class AudioFrameworkProbe(
     private val manager = context.getSystemService(AudioManager::class.java)
     private var sampledAt = Long.MIN_VALUE
     private var cached = State("UNKNOWN", "UNKNOWN")
+    private var lastDeviceInventory: String? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val query =
@@ -83,8 +84,13 @@ internal class AudioFrameworkProbe(
             operation = "communication_device"
             operationStartedAt = SystemClock.elapsedRealtime()
             RouterLog.event("AUDIO_QUERY_STAGE", "operation=communication_device")
+            val communicationDevice = manager?.communicationDevice
+            RouterLog.event(
+                "AUDIO_QUERY_STAGE_COMPLETED",
+                "operation=communication_device; elapsedMs=${SystemClock.elapsedRealtime() - operationStartedAt}",
+            )
             val device =
-                manager?.communicationDevice?.type?.let { communicationType ->
+                communicationDevice?.type?.let { communicationType ->
                     when (communicationType) {
                         AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "BLUETOOTH_SCO"
                         AudioDeviceInfo.TYPE_BLE_HEADSET -> "BLE_HEADSET"
@@ -94,14 +100,44 @@ internal class AudioFrameworkProbe(
                         else -> "OTHER"
                     }
                 } ?: "UNKNOWN"
+            // Device IDs are framework-local. Addresses may be empty or redacted by the OS;
+            // only salted aliases are exported, and product names are deliberately omitted.
+            operation = "device_inventory"
+            operationStartedAt = SystemClock.elapsedRealtime()
+            val inventory =
+                manager?.getDevices(AudioManager.GET_DEVICES_INPUTS or AudioManager.GET_DEVICES_OUTPUTS)?.map(::describeDevice)
+            val available = manager?.availableCommunicationDevices?.map(::describeDevice)
+            RouterLog.event(
+                "AUDIO_QUERY_STAGE_COMPLETED",
+                "operation=device_inventory; elapsedMs=${SystemClock.elapsedRealtime() - operationStartedAt}",
+            )
+            operation = "microphone_mute"
+            operationStartedAt = SystemClock.elapsedRealtime()
+            val microphoneMuted = manager?.isMicrophoneMute
+            val deviceInventory =
+                "communicationDevice=${describeDevice(communicationDevice)}; " +
+                    "devices=$inventory; availableCommunication=$available; microphoneMuted=$microphoneMuted; " +
+                    "inventoryIsNotActiveRouting=true; physicalInputVerified=false; physicalOutputVerified=false"
+            if (deviceInventory != lastDeviceInventory) {
+                lastDeviceInventory = deviceInventory
+                RouterLog.event("AUDIO_DEVICE_INVENTORY", deviceInventory)
+            }
             val endedAt = SystemClock.elapsedRealtime()
-            RouterLog.event("AUDIO_QUERY_STAGE_COMPLETED", "operation=communication_device; elapsedMs=${endedAt - operationStartedAt}")
+            RouterLog.event("AUDIO_QUERY_STAGE_COMPLETED", "operation=$operation; elapsedMs=${endedAt - operationStartedAt}")
             State(mode, device, if (manager == null) "UNAVAILABLE" else "OBSERVED", startedAt, endedAt - startedAt)
         }.getOrElse {
             RouterLog.event("AUDIO_QUERY_ERROR", "operation=$operation; type=${it.javaClass.simpleName}")
             State("UNKNOWN", "UNKNOWN", "ERROR", startedAt, SystemClock.elapsedRealtime() - startedAt, operation)
         }
     }
+
+    private fun describeDevice(device: AudioDeviceInfo?): String =
+        if (device == null) {
+            "UNKNOWN"
+        } else {
+            "id=${device.id},type=${device.type},source=${device.isSource},sink=${device.isSink}," +
+                "address=${device.address.takeIf { it.isNotBlank() }?.let(RouterLog::deviceId) ?: "UNAVAILABLE"}"
+        }
 
     override fun close() {
         query.close()
