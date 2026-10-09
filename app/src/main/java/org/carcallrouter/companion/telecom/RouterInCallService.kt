@@ -975,6 +975,10 @@ class RouterInCallService :
                 "sample_age_ms" to audioState.sampledAt?.let { (now - it).coerceAtLeast(0) },
                 "query_ms" to audioState.queryMs,
                 "failed_operation" to audioState.failedOperation,
+                "diagnostic_quality" to audioState.diagnosticQuality,
+                "diagnostic_query_ms" to audioState.diagnosticQueryMs,
+                "diagnostic_failed_operation" to audioState.diagnosticFailedOperation,
+                "diagnostic_sample_age_ms" to audioState.diagnosticSampledAt?.let { (now - it).coerceAtLeast(0) },
                 "diagnostic_only" to true,
             )
         }

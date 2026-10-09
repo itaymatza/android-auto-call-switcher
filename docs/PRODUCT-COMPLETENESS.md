@@ -33,6 +33,7 @@ Closed code gaps are listed here alongside their verification requirements.
 | Gap | Concrete next requirement |
 | --- | --- |
 | Call-safety and authorization query latency | Implemented: separate bounded zero-queue workers; explicit pending/unsafe/unknown states; 750 ms freshness, exact call/account/handle invalidation, permission rechecks, deadline and late-callback tests. No unknown result authorizes a request. |
+| Audio framework diagnostic isolation | Implemented: audio mode and optional device/mute diagnostics use separate bounded zero-queue workers and independent 750 ms freshness. Close clears evidence and drops late completions/logging. Production-class tests cover stalls, saturation, stale results, unavailable services and redacted inventory. Physical paths still require device qualification. |
 | Projection provider latency | Implemented: provider query, cursor access and close run off-owner; generation-invalidated and delayed positive results cannot authorize routing; lifecycle and stuck-query tests. |
 | API 37 compile boundary | Implemented: supported AGP 9.2.1 / Gradle 9.4.1 toolchain and `platforms;android-37.0`; compiler-checked public override. Runtime Android 17 dispatch remains device qualification. |
 | LE Audio routing | The compile SDK 37.0 public API exposes group/member/lead inspection, but not an equivalent of classic HFP `isAudioConnected`. Define independent active-route evidence and group identity, then qualify both physical speaker and microphone. Do not treat a group lead or device inventory as audio confirmation. |

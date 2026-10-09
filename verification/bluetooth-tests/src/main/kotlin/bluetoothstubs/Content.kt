@@ -3,15 +3,22 @@
 package android.content
 
 import android.bluetooth.BluetoothManager
+import android.media.AudioManager
 
 open class Context {
     val applicationContext: Context get() = this
     val contentResolver = ContentResolver()
     var bluetoothGranted = true
     val manager = BluetoothManager()
+    var audioManager: AudioManager? = AudioManager()
     var receiver: BroadcastReceiver? = null
 
-    fun <T> getSystemService(type: Class<T>): T? = if (type == BluetoothManager::class.java) type.cast(manager) else null
+    fun <T> getSystemService(type: Class<T>): T? =
+        when (type) {
+            BluetoothManager::class.java -> type.cast(manager)
+            AudioManager::class.java -> type.cast(audioManager)
+            else -> null
+        }
 
     fun registerReceiver(
         receiver: BroadcastReceiver,

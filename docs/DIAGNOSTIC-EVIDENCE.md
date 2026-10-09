@@ -14,7 +14,7 @@ speaker/microphone behavior remain separate facts.
 | Did diagnostics or safety checks stall the main callback path? | `OPERATION_STARTED`/`OPERATION_FINISHED` for authorization, runtime permissions and call safety; `EVALUATION_TIMING` duration/queue delay | Added here; an unfinished operation identifies the last entered operation, not a proven root cause |
 | Was a timer late because of sleep, dispatch, or an already-expired deadline? | Requested delay, elapsed/uptime deltas, `sleep_delta_ms`, `dispatch_late_ms`, and logical `late_ms` | Separate measurements; a late deadline alone does not prove a blocked Handler |
 | Was Android Auto really observed, or merely inferred? | Provider raw value, status, generation, trigger, pending flag, sample age and query duration | Added here; no Bluetooth/Wi-Fi heuristic authorizes routing; querying does not erase the last observation's age |
-| Was AudioManager evidence unavailable, stale, or failed? | Mode/device type, sample age, query duration, quality and failed operation; separate getter entry/exit logs | Added here; public device type cannot identify target versus another SCO device or prove HAL audio |
+| Was AudioManager evidence unavailable, stale, or failed? | Mode/device type, independent sample ages, query durations, qualities and failed operations; separate bounded mode/diagnostic workers | Added here; public device type cannot identify target versus another SCO device or prove HAL audio |
 | Did the Bluetooth query stall or return ambiguous negative evidence? | Sample quality, proxy availability, trigger, total query duration and per-getter timing with redacted device IDs | Added here; public getters may return false/empty on service failure without throwing, so negative evidence remains ambiguous |
 | Why was selector recovery absent? | Configured/resolved competitor, HFP owner, policy reason, recovery context and result | Already implemented; preserve external-control suppression and exact configured identity |
 | Did success at call start last? | Post-confirmation samples, event-driven changes, fresh HFP sample contract, observation-gap/teardown classification | Already implemented; sparse observations are not continuous physical validation |
@@ -116,3 +116,13 @@ not a proven user action or service identity.
 
 The analyzer exports answer_to_hfp_ms, dialing_to_hfp_ms, connected_duration_ms and
 max_observation_gap_ms when available. Legacy exports keep these values unknown.
+
+## Beta.16 audio-framework isolation
+
+`AUDIO_FRAMEWORK_STATE` keeps mode `quality`, `sample_age_ms` and `query_ms`
+separate from `diagnostic_quality`, `diagnostic_sample_age_ms`,
+`diagnostic_query_ms` and `diagnostic_failed_operation`. Optional communication-device,
+inventory and microphone-mute reads cannot delay the mode worker. Each stream expires
+after 750 ms independently. Inventory completion logs are published on the owner only
+when fresh and observed; shutdown discards late results. No inventory or communication
+device observation verifies physical call input or output.
