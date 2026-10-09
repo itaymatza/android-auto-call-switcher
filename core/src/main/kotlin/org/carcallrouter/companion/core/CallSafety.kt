@@ -12,12 +12,18 @@ object CallSafety {
         val numberIsEmergency: Boolean?,
     )
 
-    fun rejection(e: Evidence): String? =
+    /** Explicit unsupported scope is decided before protected account/number lookups. */
+    fun scopeRejection(e: Evidence): String? =
         when {
             e.emergencyFlag -> "Network-identified emergency call"
             e.emergencyCallbackMode -> "Emergency callback mode"
             e.externalOrSelfManaged -> "External or self-managed call"
             e.conference -> "Conference call"
+            else -> null
+        }
+
+    fun rejection(e: Evidence): String? =
+        scopeRejection(e) ?: when {
             e.simAccount != true -> "SIM-backed phone account not verified"
             !e.telephoneHandlePresent -> "Telephone handle hidden or unavailable; emergency status unknown"
             e.numberIsEmergency == null -> "Emergency-number classification unavailable"

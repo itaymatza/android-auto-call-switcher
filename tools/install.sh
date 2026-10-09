@@ -16,7 +16,7 @@ SERIAL="${1:-}"
 [[ "${SKIP_BUILD:-0}" == 1 ]] || bash "$ROOT/gradlew" "-PAPP_APPLICATION_ID=$PACKAGE" \
     "-PAPP_VERSION_CODE=$VERSION_CODE" "-PAPP_VERSION_NAME=$VERSION_NAME" \
     :core:check :app:ktlintCheck :app:assembleDebug :app:testDebugUnitTest \
-    :verification:service-tests:check :verification:bluetooth-tests:check :app:lintDebug --console=plain
+    :verification:service-tests:check :verification:bluetooth-tests:check :verification:call-safety-tests:check :app:lintDebug --console=plain
 APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 [[ -f "$APK" ]] || { echo "Missing APK: $APK" >&2; exit 1; }
 ANDROID_BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-${ANDROID_HOME:-}/build-tools/36.0.0}" \

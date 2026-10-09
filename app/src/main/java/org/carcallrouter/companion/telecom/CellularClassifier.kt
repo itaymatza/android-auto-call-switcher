@@ -18,12 +18,26 @@ class CellularClassifier(
     @SuppressLint("MissingPermission")
     fun rejection(call: Call): String? {
         val details = call.details ?: return "Call details unavailable"
+        val scope =
+            CallSafety.Evidence(
+                simAccount = null,
+                emergencyFlag = details.hasProperty(Call.Details.PROPERTY_NETWORK_IDENTIFIED_EMERGENCY_CALL),
+                emergencyCallbackMode = details.hasProperty(Call.Details.PROPERTY_EMERGENCY_CALLBACK_MODE),
+                externalOrSelfManaged =
+                    details.hasProperty(Call.Details.PROPERTY_IS_EXTERNAL_CALL) ||
+                        details.hasProperty(Call.Details.PROPERTY_SELF_MANAGED),
+                conference = details.hasProperty(Call.Details.PROPERTY_CONFERENCE) || call.children.isNotEmpty(),
+                telephoneHandlePresent = false,
+                numberIsEmergency = null,
+            )
+        CallSafety.scopeRejection(scope)?.let { return it }
         val sim =
             try {
                 details.accountHandle?.let { telecom?.getPhoneAccount(it)?.hasCapabilities(PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) }
             } catch (_: RuntimeException) {
                 null
             }
+        if (sim != true) return CallSafety.rejection(scope.copy(simAccount = sim))
         val handle = details.handle
         val number =
             if (handle?.scheme == "tel") {
@@ -41,14 +55,8 @@ class CellularClassifier(
                 }
             }
         return CallSafety.rejection(
-            CallSafety.Evidence(
+            scope.copy(
                 simAccount = sim,
-                emergencyFlag = details.hasProperty(Call.Details.PROPERTY_NETWORK_IDENTIFIED_EMERGENCY_CALL),
-                emergencyCallbackMode = details.hasProperty(Call.Details.PROPERTY_EMERGENCY_CALLBACK_MODE),
-                externalOrSelfManaged =
-                    details.hasProperty(Call.Details.PROPERTY_IS_EXTERNAL_CALL) ||
-                        details.hasProperty(Call.Details.PROPERTY_SELF_MANAGED),
-                conference = details.hasProperty(Call.Details.PROPERTY_CONFERENCE) || call.children.isNotEmpty(),
                 telephoneHandlePresent = number != null,
                 numberIsEmergency = emergency,
             ),

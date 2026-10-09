@@ -59,6 +59,7 @@ jobs:
           :app:testDebugUnitTest
           :verification:service-tests:check
           :verification:bluetooth-tests:check
+          :verification:call-safety-tests:check
           :app:lintRelease
           :app:assembleRelease
           --stacktrace --console=plain

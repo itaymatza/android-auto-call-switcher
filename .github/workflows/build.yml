@@ -40,7 +40,7 @@ jobs:
       - name: Test policy, service callback, trace, and capture contracts
         run: |
           python3 -m unittest tools.tests.test_analyze_device_trace tools.tests.test_analyze_parked_reports tools.tests.test_capture_device_run tools.tests.test_extract_new_app_events
-          bash gradlew :core:test :verification:service-tests:test :verification:bluetooth-tests:test --stacktrace --console=plain
+          bash gradlew :core:test :verification:service-tests:test :verification:bluetooth-tests:test :verification:call-safety-tests:test --stacktrace --console=plain
 
   build:
     runs-on: ubuntu-latest
@@ -62,13 +62,14 @@ jobs:
           bash -n tools/*.sh verification/service-tests/run.sh
           pwsh -NoProfile -Command '$errors = $null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "tools/install.ps1"), [ref]$null, [ref]$errors) > $null; if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }'
       - name: Compile, unit-test, service-test and lint
-        run: bash gradlew :core:check :app:ktlintCheck :app:assembleDebug :app:testDebugUnitTest :verification:service-tests:check :verification:bluetooth-tests:check :app:lintDebug --stacktrace --console=plain
+        run: bash gradlew :core:check :app:ktlintCheck :app:assembleDebug :app:testDebugUnitTest :verification:service-tests:check :verification:bluetooth-tests:check :verification:call-safety-tests:check :app:lintDebug --stacktrace --console=plain
       - name: Publish coverage summary
         run: >-
           python3 tools/summarize_coverage.py
           --report core=core/build/reports/jacoco/test/jacocoTestReport.xml
           --report service=verification/service-tests/build/reports/jacoco/test/jacocoTestReport.xml
           --report bluetooth=verification/bluetooth-tests/build/reports/jacoco/test/jacocoTestReport.xml
+          --report call-safety=verification/call-safety-tests/build/reports/jacoco/test/jacocoTestReport.xml
           --output "$GITHUB_STEP_SUMMARY"
       - name: Upload test and coverage reports
         if: always()
@@ -82,6 +83,8 @@ jobs:
             verification/service-tests/build/test-results/test/
             verification/bluetooth-tests/build/reports/jacoco/test/
             verification/bluetooth-tests/build/test-results/test/
+            verification/call-safety-tests/build/reports/jacoco/test/
+            verification/call-safety-tests/build/test-results/test/
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
           if-no-files-found: warn
