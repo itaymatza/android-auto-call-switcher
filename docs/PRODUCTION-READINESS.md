@@ -2,7 +2,7 @@
 
 ## Current classification
 
-`0.3.0-beta.15` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
+`0.3.0-beta.16` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
 
 ## Completed engineering gates
 
@@ -19,6 +19,9 @@
 - Diagnostics redact phone numbers, device names, and raw Bluetooth addresses.
 - The API 37 endpoint-request signature and both callback orders are regression-tested; final
   dispatch validation remains a real Android 17 device gate; builds now compile the actual API 37 override.
+- Audio-mode evidence uses an independent bounded worker; slow optional communication-device,
+  inventory or microphone-mute queries cannot starve it. Both streams expire independently after
+  750 ms; diagnostic quality/age are exported and closed probes retain no usable evidence.
 - Structured evidence separates Telecom endpoint confirmation from exact target HFP audio/SCO confirmation.
 - A privacy-bounded ADB harness isolates each new device session, validates trace integrity, records
   physical speaker/microphone and Android Auto observations, and emits a conservative combined

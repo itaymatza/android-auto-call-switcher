@@ -1,0 +1,2 @@
+Version 0.3.0-beta.16
+Separate bounded audio-mode and optional diagnostic workers prevent slow device inventories from starving routing evidence. Independent freshness is exported; shutdown clears cached evidence and drops late results. Adds production-probe regression tests. Physical-device qualification and supported-platform integration gates remain open.

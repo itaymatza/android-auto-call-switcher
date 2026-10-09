@@ -25,7 +25,18 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.15
+## What changed in beta.16
+
+- Gives the audio-mode probe and optional communication-device/inventory/microphone-mute
+  diagnostics separate bounded, zero-queue workers. A blocked or failed diagnostic read
+  cannot suppress fresh audio-mode evidence; fresh diagnostics cannot rescue stale mode evidence.
+- Exports independent diagnostic freshness and age in the call trace. Inventories still do
+  not prove physical microphone or speaker routing.
+- Clears cached evidence on shutdown and drops late completion/ inventory logging.
+- Adds production audio-probe regression tests for worker saturation, stalls, errors,
+  stale/late results, lifecycle cleanup and privacy-preserving diagnostic exports.
+
+## Earlier beta.15 behavior
 
 - Moves call eligibility and protected authorization reads off the service and UI threads.
   Pending, stale, superseded and failed reads cannot authorize a routing request.

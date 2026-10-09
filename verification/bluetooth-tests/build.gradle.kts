@@ -21,6 +21,7 @@ sourceSets.main {
         srcDir(rootProject.file("verification/service-tests/src/main/kotlin"))
         include("bluetoothstubs/**/*.kt")
         include("stubs/Os.kt", "stubs/SuppressLint.kt")
+        include("org/carcallrouter/companion/telecom/AudioFrameworkProbe.kt")
         include("org/carcallrouter/companion/telecom/HfpMonitor.kt", "org/carcallrouter/companion/ProjectionMonitor.kt")
         include("org/carcallrouter/companion/ui/CallDevicePreflight.kt")
         include("org/carcallrouter/companion/ui/CallDeviceCompatibility.kt")
@@ -44,6 +45,7 @@ tasks.jacocoTestReport {
             include(
                 "org/carcallrouter/companion/ProjectionMonitor*",
                 "org/carcallrouter/companion/telecom/HfpMonitor*",
+                "org/carcallrouter/companion/telecom/AudioFrameworkProbe*",
                 "org/carcallrouter/companion/ui/CallDevicePreflight*",
             )
         },

@@ -2,8 +2,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGE="${APP_APPLICATION_ID:-org.carcallrouter.companion}"
-VERSION_CODE="${APP_VERSION_CODE:-17}"
-VERSION_NAME="${APP_VERSION_NAME:-0.3.0-beta.15}"
+VERSION_CODE="${APP_VERSION_CODE:-18}"
+VERSION_NAME="${APP_VERSION_NAME:-0.3.0-beta.16}"
 SOURCE_ACTIVITY='org.carcallrouter.companion.ui.MainActivity'
 if [[ -z "${ANDROID_HOME:-}" ]]; then
     for dir in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do

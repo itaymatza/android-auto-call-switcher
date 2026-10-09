@@ -12,6 +12,10 @@ internal class AudioFrameworkProbe(
         val sampledAt: Long? = null,
         val queryMs: Long? = null,
         val failedOperation: String? = null,
+        val diagnosticQuality: String = "OBSERVED",
+        val diagnosticSampledAt: Long? = null,
+        val diagnosticQueryMs: Long? = null,
+        val diagnosticFailedOperation: String? = null,
     )
 
     fun sample(
