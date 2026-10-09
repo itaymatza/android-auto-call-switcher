@@ -100,7 +100,10 @@ SIM account and emergency-number reads, Telecom authorization, projection provid
 (including cursor access and close), HFP observations and framework audio sampling use separate
 process-wide single-worker executors with no queue. A stuck Binder read cannot block the service
 owner, accumulate queued jobs, or create replacement threads. The owner receives immutable
-results; closing a monitor discards later completions.
+results; closing a monitor discards later completions. Foreground setup authorization uses its
+own process-wide zero-queue worker, so a stuck setup read cannot occupy the routing service lane.
+Explicit user verification invalidates cached access and waits for a new result within a five-second
+foreground deadline; it does not report a cached grant or denial as a fresh verification.
 
 Call safety has explicit pending, safe and unsafe states. Permission and unsupported-call flags
 reject immediately. Positive safety is bound to the exact Call object and account/telephone

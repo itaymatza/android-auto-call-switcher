@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
 import android.view.View
@@ -32,6 +33,9 @@ import org.carcallrouter.companion.SessionBridge
 import org.carcallrouter.companion.telecom.AuthorizationMonitor
 import java.text.DateFormat
 import java.util.Date
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private lateinit var settings: RouterSettings
@@ -67,12 +71,17 @@ class MainActivity : Activity() {
     private var monitor: ProjectionMonitor? = null
     private var preflight: CallDevicePreflight? = null
     private var authorizationMonitor: AuthorizationMonitor? = null
+    private var authorizationVerificationDeadline: Long? = null
     private val main = Handler(Looper.getMainLooper())
     private val authorizationRefresh: Runnable =
         object : Runnable {
             override fun run() {
                 if (authorizationMonitor != null) {
                     refresh()
+                    if (authorizationVerificationDeadline?.let { SystemClock.elapsedRealtime() >= it } == true) {
+                        authorizationVerificationDeadline = null
+                        toast(getString(R.string.authorization_not_detected))
+                    }
                     main.postDelayed(this, 500)
                 }
             }
@@ -197,7 +206,25 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         logUiState("STARTED")
-        authorizationMonitor = AuthorizationMonitor(this) { refresh() }
+        authorizationMonitor =
+            AuthorizationMonitor(this, queryWorker = setupAuthorizationWorker) {
+                refresh()
+                if (authorizationVerificationDeadline != null) {
+                    val authorized = authorizationMonitor?.sample()
+                    authorizationVerificationDeadline = null
+                    RouterLog.event(
+                        if (authorized ==
+                            true
+                        ) {
+                            "AUTH_COMPLETE"
+                        } else {
+                            "AUTH_MISSING"
+                        },
+                        "Fresh user-requested authorization verification; granted=${authorized == true}",
+                    )
+                    toast(getString(if (authorized == true) R.string.authorization_success else R.string.authorization_not_detected))
+                }
+            }
         main.post(authorizationRefresh)
         SessionBridge.observe(statusListener)
         RouterLog.observe(logListener)
@@ -221,6 +248,7 @@ class MainActivity : Activity() {
         SessionBridge.remove(statusListener)
         RouterLog.remove(logListener)
         main.removeCallbacks(authorizationRefresh)
+        authorizationVerificationDeadline = null
         authorizationMonitor?.close()
         authorizationMonitor = null
         monitor?.close()
@@ -504,20 +532,14 @@ class MainActivity : Activity() {
     }
 
     private fun verifyCallAuthorization() {
-        val authorized = authorizationMonitor?.sample()
-        if (authorized == null) {
-            toast(getString(R.string.authorization_checking))
+        if (!Access.runtimeGranted(this)) {
+            toast(getString(R.string.permissions_missing))
             return
         }
-        if (authorized) {
-            RouterLog.event("AUTH_COMPLETE", "MANAGE_ONGOING_CALLS detected")
-            refresh()
-            toast(getString(R.string.authorization_success))
-            return
-        }
-        RouterLog.event("AUTH_MISSING", "MANAGE_ONGOING_CALLS still unavailable after user verification")
+        authorizationVerificationDeadline = SystemClock.elapsedRealtime() + 5_000
+        toast(getString(R.string.authorization_checking))
+        authorizationMonitor?.requestRefresh()
         refresh()
-        toast(getString(R.string.authorization_not_detected))
     }
 
     private fun showAuthorizationGuide() {
@@ -718,6 +740,11 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        // Foreground setup must not occupy the routing service's protected-query lane.
+        private val setupAuthorizationWorker =
+            ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>(), { task ->
+                Thread(task, "router-setup-authorization").apply { isDaemon = true }
+            })
         private const val REQUEST_PERMISSIONS = 10
         private const val REQUEST_EXPORT = 20
     }

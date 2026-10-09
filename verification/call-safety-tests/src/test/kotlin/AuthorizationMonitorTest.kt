@@ -147,6 +147,22 @@ class AuthorizationMonitorTest {
         assertEquals("ERROR", monitor.diagnosticFields().toMap()["authorization_quality"])
     }
 
+    @Test fun explicitVerificationDiscardsCachedAndInFlightOldGrant() {
+        monitor.sample()
+        complete()
+        assertEquals(true, monitor.sample())
+        TestQueue.advanceTo(250)
+        monitor.sample()
+        worker.runOne()
+        grant = false
+        monitor.requestRefresh()
+        assertNull(monitor.sample())
+        TestQueue.runReady()
+        assertNull(monitor.sample())
+        complete()
+        assertEquals(false, monitor.sample())
+    }
+
     private class ManualWorker : Executor {
         private val tasks = ArrayDeque<Runnable>()
         val size get() = tasks.size

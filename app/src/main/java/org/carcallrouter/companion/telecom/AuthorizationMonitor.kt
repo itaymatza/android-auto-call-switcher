@@ -76,6 +76,17 @@ class AuthorizationMonitor internal constructor(
         return value
     }
 
+    /** Explicit user verification must await a new query, never reuse a cached grant/denial. */
+    fun requestRefresh() {
+        if (closed) return
+        query.invalidate()
+        value = null
+        sampledAt = null
+        refreshAt = 0
+        quality = "UNSAMPLED"
+        sample()
+    }
+
     fun diagnosticFields(now: Long = SystemClock.elapsedRealtime()): Array<Pair<String, Any?>> =
         arrayOf(
             "authorization_quality" to quality,
