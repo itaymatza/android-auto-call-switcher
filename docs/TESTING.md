@@ -157,6 +157,11 @@ exact installed APK hash stayed unchanged, lists missing cells, and calculates t
 `3/n` upper failure-rate bound only when the batch has no failures. `--require-ready` exits nonzero
 until all required counts pass, without uploading any device evidence.
 
+The batch summary also rechecks raw `app-events.log` parked reports. A failed, unchecked, or
+malformed report vetoes that run even if `verdict.txt` says `PASS` or `parked-reports.json` is stale.
+Captures written with the parked-report gate must include their raw app-event file. Legacy
+captures without that gate remain readable; a positive in-app report never upgrades a failed run.
+
 ## Current device evidence
 
 On 2026-09-19, the project owner confirmed the proof of concept on the intended Samsung phone, aftermarket Android Auto unit, and native 2018 BMW X1 Bluetooth system. The app successfully moved active call speaker and microphone routing to the BMW endpoint while Android Auto remained active. Intermittent behavior was also reported, so this is evidence for technical feasibility—not yet a production stability claim.

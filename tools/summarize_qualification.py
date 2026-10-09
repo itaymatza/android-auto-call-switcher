@@ -9,6 +9,11 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+try:
+    from .analyze_parked_reports import analyze as analyze_parked_reports
+except ImportError:  # Direct command-line invocation.
+    from analyze_parked_reports import analyze as analyze_parked_reports
+
 
 INVARIANT_FIELDS = (
     "manufacturer",
@@ -114,6 +119,20 @@ def load_evidence(root: Path) -> tuple[list[RunEvidence], list[str]]:
         result = verdict.get("verdict", "")
         if result not in {"PASS", "FAIL"}:
             errors.append(f"{run_dir}: verdict must be PASS or FAIL")
+        # Recompute from raw events: a saved PASS or derived JSON must not erase a
+        # contradictory report. Older captures without this gate remain readable.
+        events_path = run_dir / "app-events.log"
+        reports_required = verdict.get("rule", "").endswith("_and_no_parked_report_problem")
+        if events_path.exists() or reports_required:
+            try:
+                with events_path.open(encoding="utf-8", errors="replace") as source:
+                    reports = analyze_parked_reports(source)
+                if not reports["acceptable"]:
+                    errors.append(f"{run_dir}: failed, unchecked, or malformed parked-test report")
+                    result = "FAIL"
+            except OSError as error:
+                errors.append(f"{run_dir}: cannot read parked-test evidence: {error}")
+                result = "FAIL"
         tags = tuple(sorted({
             LEGACY_TAG_ALIASES.get(tag, tag)
             for tag in filter(None, device.get("qualification_tags", "").split(","))
