@@ -9,7 +9,7 @@ not a claim of universal compatibility or production readiness.
 | --- | --- | --- |
 | Launcher, app copy, Gradle project, store title | Renamed in PR #69 | Inspect fresh install and update on a real phone. |
 | README, current release notes, social preview, future APK/artifact names | Follow-up aligns current branding | Existing historical assets/notes remain historical. Upload the new social preview in GitHub Settings. |
-| GitHub repository name | Still `itaymatza/car-call-router` | Rename to `itaymatza/android-auto-call-switcher`; the connector has no repository-settings write operation. |
+| GitHub repository name | Canonical slug `itaymatza/android-auto-call-switcher` | Merge this migration only after the actual admin Settings rename. |
 | Repository description/topics | Requires Settings review | Description: “Choose the Bluetooth device for cellular calls while Android Auto handles navigation and media.” Topics: `android`, `android-auto`, `bluetooth`, `hfp`, `telecom`, `kotlin`. |
 | Canonical links, badges, clone URL, signing helper repository argument | Migration prepared separately | Switch to the new URL with the actual repository rename; verify redirects and release links. |
 | Installed package, namespace, signing material | Intentionally stable | Keep `org.carcallrouter.companion`, existing certificate, keystore locations and key aliases. Renaming these is not branding cleanup. |
@@ -26,6 +26,10 @@ not a claim of universal compatibility or production readiness.
 | Production claim | Beta only | Complete the unchanged-APK stability matrix, classify failures and verify signed non-debuggable release. |
 
 ## Repository rename procedure
+
+**Migration precondition:** GitHub Settings must rename `car-call-router` to
+`android-auto-call-switcher` before this link migration merges. The old slug must remain
+available for GitHub redirects. This draft changes URLs; it does not perform the admin rename.
 
 Prepare link changes before changing Settings. The proposed slug is `android-auto-call-switcher`.
 Keep the repository itself: do not create a replacement repository or migrate issues/releases.

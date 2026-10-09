@@ -2,19 +2,20 @@
 
 ![Android Auto Call Switcher](docs/assets/social-preview.png)
 
-[![Build](https://github.com/itaymatza/car-call-router/actions/workflows/build.yml/badge.svg)](https://github.com/itaymatza/car-call-router/actions/workflows/build.yml)
-[![CodeQL](https://github.com/itaymatza/car-call-router/actions/workflows/codeql.yml/badge.svg)](https://github.com/itaymatza/car-call-router/actions/workflows/codeql.yml)
-[![Latest beta](https://img.shields.io/github/v/release/itaymatza/car-call-router?include_prereleases&label=latest%20beta)](https://github.com/itaymatza/car-call-router/releases)
-[![Downloads](https://img.shields.io/github/downloads/itaymatza/car-call-router/total?label=downloads)](https://github.com/itaymatza/car-call-router/releases)
+[![Build](https://github.com/itaymatza/android-auto-call-switcher/actions/workflows/build.yml/badge.svg)](https://github.com/itaymatza/android-auto-call-switcher/actions/workflows/build.yml)
+[![CodeQL](https://github.com/itaymatza/android-auto-call-switcher/actions/workflows/codeql.yml/badge.svg)](https://github.com/itaymatza/android-auto-call-switcher/actions/workflows/codeql.yml)
+[![Latest beta](https://img.shields.io/github/v/release/itaymatza/android-auto-call-switcher?include_prereleases&label=latest%20beta)](https://github.com/itaymatza/android-auto-call-switcher/releases)
+[![Downloads](https://img.shields.io/github/downloads/itaymatza/android-auto-call-switcher/total?label=downloads)](https://github.com/itaymatza/android-auto-call-switcher/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**Download latest APK release**](https://github.com/itaymatza/car-call-router/releases) · [All versions and release notes](https://github.com/itaymatza/car-call-router/releases)
+[**Download latest APK release**](https://github.com/itaymatza/android-auto-call-switcher/releases) · [All versions and release notes](https://github.com/itaymatza/android-auto-call-switcher/releases)
 
 
 **Use your chosen Bluetooth device for call speaker and microphone audio while Android Auto handles everything else.**
 
-The installed app is named **Android Auto Call Switcher**. The source repository stays at
-`itaymatza/car-call-router`, preserving existing download and support links.
+The installed app is named **Android Auto Call Switcher**. The canonical source repository is
+`itaymatza/android-auto-call-switcher`. GitHub redirects the previous repository links; the
+installed package and signing identity stay stable for in-place updates.
 
 ## The problem
 
@@ -112,26 +113,26 @@ See the exact [authorization and troubleshooting guide](docs/AUTHORIZATION.md), 
 
 ## Releases and downloads
 
-[GitHub Releases](https://github.com/itaymatza/car-call-router/releases) is the canonical version
+[GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) is the canonical version
 history. Each published version has release notes and durable downloadable files, so a GitHub
 account is not required just to download the APK.
 
 | Version | Channel | Downloads |
 | --- | --- | --- |
-| `0.3.0-beta.14` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/car-call-router/releases) |
-| `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.10-debug) |
-| `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.9-debug) |
-| `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.7-debug) |
-| `0.3.0-beta.6` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.6-debug) |
-| `0.3.0-beta.5` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/car-call-router/releases/tag/v0.3.0-beta.5-debug) |
+| `0.3.0-beta.14` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
+| `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.10-debug) |
+| `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.9-debug) |
+| `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.7-debug) |
+| `0.3.0-beta.6` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.6-debug) |
+| `0.3.0-beta.5` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.5-debug) |
 
-A new debug APK is published for each successful push to `main` on the [Releases page](https://github.com/itaymatza/car-call-router/releases). Each file and version includes the source commit ID. Protected debug signing must be configured before publication; the pinned certificate blocks unexpected keys. The first protected-key APK requires a one-time reinstall for users of beta.11 or the initial beta.12 build. Later protected-key builds can update each other in place.
+A new debug APK is published for each successful push to `main` on the [Releases page](https://github.com/itaymatza/android-auto-call-switcher/releases). Each file and version includes the source commit ID. Protected debug signing must be configured before publication; the pinned certificate blocks unexpected keys. The first protected-key APK requires a one-time reinstall for users of beta.11 or the initial beta.12 build. Later protected-key builds can update each other in place.
 
 ## Download and install the APK
 
 The easiest path is the durable direct download:
 
-1. Open [GitHub Releases](https://github.com/itaymatza/car-call-router/releases) and download the `.apk` from the newest `0.3.0-beta.14` debug pre-release.
+1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.14` debug pre-release.
 2. Open the downloaded APK on the Android device.
 3. If Android prompts you, temporarily allow **Install unknown apps** for the browser or file
    manager, install the APK, and then disable that permission again.
@@ -143,7 +144,7 @@ If Android reports that the package cannot be updated or is incompatible with th
 > one-time authorization flow below. See the [release notes](docs/DEBUG-PRERELEASE-NOTES.md) and
 > [production-readiness gates](docs/PRODUCTION-READINESS.md).
 
-The [Actions build artifact](https://github.com/itaymatza/car-call-router/actions/workflows/build.yml)
+The [Actions build artifact](https://github.com/itaymatza/android-auto-call-switcher/actions/workflows/build.yml)
 remains available as a fallback for testing the newest `main` commit, but it requires a GitHub
 sign-in, downloads as a ZIP, and expires.
 

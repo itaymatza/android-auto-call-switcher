@@ -94,9 +94,9 @@
     <string name="view_source">Source and documentation</string>
     <string name="report_issue">Report a problem</string>
     <string name="link_unavailable">No app is available to open this link.</string>
-    <string name="project_url" translatable="false">https://github.com/itaymatza/car-call-router</string>
-    <string name="releases_url" translatable="false">https://github.com/itaymatza/car-call-router/releases</string>
-    <string name="issues_url" translatable="false">https://github.com/itaymatza/car-call-router/issues</string>
+    <string name="project_url" translatable="false">https://github.com/itaymatza/android-auto-call-switcher</string>
+    <string name="releases_url" translatable="false">https://github.com/itaymatza/android-auto-call-switcher/releases</string>
+    <string name="issues_url" translatable="false">https://github.com/itaymatza/android-auto-call-switcher/issues</string>
     <string name="compatibility_checking">Checking the selected device’s call transport…</string>
     <string name="compatibility_no_target">Choose a call device to check compatibility.</string>
     <string name="compatibility_classic">Classic hands-free connection observed. During a call, the device must also appear in the Phone app’s audio selector. This does not verify its speaker or microphone.</string>
