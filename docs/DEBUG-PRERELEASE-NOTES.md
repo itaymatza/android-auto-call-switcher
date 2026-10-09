@@ -25,7 +25,20 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.16
+## What changed in beta.17
+
+- Separates exact classic HFP connection/SCO evidence, device-name/alias identity and Bluetooth
+  power diagnostics into independent bounded zero-queue workers. Slow optional reads cannot
+  starve SCO verification; power reads cannot starve identity inspection.
+- Bluetooth connection/audio/name/alias/power broadcasts invalidate cached and in-flight evidence.
+  Superseded queries drain before a fresh read; no work queues grow behind stalled Binder calls.
+- Multiple-device endpoint matching requires fresh, complete live names and aliases. Saved names
+  cannot authorize a route. Unknown identity is not treated as a proven competing route. The
+  single-device/single-endpoint topology fallback remains available.
+- Clears all HFP evidence on close, releases replaced proxies and prevents late publication/logging.
+- Adds 19 production HFP tests, strict identity tests and three service regression scenarios.
+
+## Earlier beta.16 behavior
 
 - Gives the audio-mode probe and optional communication-device/inventory/microphone-mute
   diagnostics separate bounded, zero-queue workers. A blocked or failed diagnostic read

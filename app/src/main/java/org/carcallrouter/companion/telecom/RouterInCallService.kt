@@ -817,6 +817,7 @@ class RouterInCallService :
                     !hfp.known -> RoutingPolicy.Route.UNKNOWN
                     router.isCurrent(targetEndpoint().endpoint) -> RoutingPolicy.Route.TARGET
                     router.isCurrent(competitorEndpoint().endpoint) -> RoutingPolicy.Route.COMPETING_DEVICE
+                    !hfp.labelsKnown -> RoutingPolicy.Route.UNKNOWN
                     else -> RoutingPolicy.Route.OTHER_BLUETOOTH
                 }
             else -> RoutingPolicy.Route.UNKNOWN
@@ -826,10 +827,10 @@ class RouterInCallService :
     private fun targetEndpoint(): AddressedTelecomRouter.Target {
         val address = settings.targetAddress?.uppercase()
         return router.target(
-            savedLabel = settings.targetName,
             targetHfpConnected = address != null && hfp.known && address in hfp.connected,
             connectedHfpCount = if (hfp.known) hfp.connected.size else 0,
             liveTargetLabels = hfp.deviceLabels[address].orEmpty(),
+            liveLabelsKnown = hfp.labelsKnown,
             otherConnectedLabels =
                 hfp.deviceLabels
                     .filterKeys { it != address }
@@ -842,10 +843,10 @@ class RouterInCallService :
     private fun competitorEndpoint(): AddressedTelecomRouter.Target {
         val address = settings.competitorAddress?.uppercase()
         return router.target(
-            savedLabel = settings.competitorName,
             targetHfpConnected = address != null && hfp.known && address in hfp.connected,
             connectedHfpCount = if (hfp.known) hfp.connected.size else 0,
             liveTargetLabels = hfp.deviceLabels[address].orEmpty(),
+            liveLabelsKnown = hfp.labelsKnown,
             otherConnectedLabels =
                 hfp.deviceLabels
                     .filterKeys { it != address }

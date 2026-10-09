@@ -96,9 +96,9 @@ class CoverageCasesTest {
     @Test
     fun emptySavedLabelUsesOnlyUnambiguousHfpTopology() {
         val one = Candidate("one", "Car")
-        assertTrue(EndpointIdentity.resolve("   ", listOf(one), true, 1) is Resolution.Matched)
+        assertTrue(EndpointIdentity.resolve(listOf(one), true, 1, setOf("   "), emptySet(), false) is Resolution.Matched)
         assertTrue(
-            EndpointIdentity.resolve("", listOf(one, Candidate("two", "Other")), true, 2)
+            EndpointIdentity.resolve(listOf(one, Candidate("two", "Other")), true, 2, emptySet(), emptySet(), false)
                 is Resolution.Unavailable,
         )
     }

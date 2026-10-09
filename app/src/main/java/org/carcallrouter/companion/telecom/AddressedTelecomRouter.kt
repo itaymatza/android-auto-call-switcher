@@ -84,11 +84,11 @@ class AddressedTelecomRouter(
     fun endpointRevision(): Long = availableRevision
 
     fun target(
-        savedLabel: String,
         targetHfpConnected: Boolean,
         connectedHfpCount: Int,
-        liveTargetLabels: Set<String> = emptySet(),
-        otherConnectedLabels: Set<String> = emptySet(),
+        liveTargetLabels: Set<String>,
+        otherConnectedLabels: Set<String>,
+        liveLabelsKnown: Boolean,
     ): Target {
         val endpoints = available.filter { it.endpointType == CallEndpoint.TYPE_BLUETOOTH }
         val candidates =
@@ -98,12 +98,12 @@ class AddressedTelecomRouter(
         return when (
             val resolution =
                 EndpointIdentity.resolve(
-                    savedLabel,
                     candidates,
                     targetHfpConnected,
                     connectedHfpCount,
                     liveTargetLabels,
                     otherConnectedLabels,
+                    liveLabelsKnown,
                 )
         ) {
             is EndpointIdentity.Resolution.Matched ->

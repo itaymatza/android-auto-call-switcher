@@ -1,0 +1,2 @@
+Version 0.3.0-beta.17
+Independent bounded HFP, live-label and power workers prevent optional reads from blocking call-audio verification. Bluetooth events invalidate stale results. Multiple-device matching requires fresh live identity; saved names cannot route. Adds HFP and service regressions. Physical qualification and separate platform integrations remain open.

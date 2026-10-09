@@ -4,11 +4,21 @@ package android.bluetooth
 
 import android.content.Context
 
-data class BluetoothDevice(
+class BluetoothDevice(
     val address: String,
-    val name: String? = "Device",
-    val alias: String? = null,
-)
+    name: String? = "Device",
+    alias: String? = null,
+) {
+    var readName: () -> String? = { name }
+    var readAlias: () -> String? = { alias }
+    val name get() = readName()
+    val alias get() = readAlias()
+
+    companion object {
+        const val ACTION_NAME_CHANGED = "device.name"
+        const val ACTION_ALIAS_CHANGED = "device.alias"
+    }
+}
 
 interface BluetoothProfile {
     val connectedDevices: List<BluetoothDevice>
@@ -35,7 +45,9 @@ open class BluetoothHeadset : BluetoothProfile {
     var read: (() -> List<BluetoothDevice>)? = null
     override val connectedDevices get() = read?.invoke() ?: devices
 
-    fun isAudioConnected(device: BluetoothDevice) = device.address in audio
+    var readAudio: ((BluetoothDevice) -> Boolean)? = null
+
+    fun isAudioConnected(device: BluetoothDevice) = readAudio?.invoke(device) ?: (device.address in audio)
 
     companion object {
         const val ACTION_CONNECTION_STATE_CHANGED = "headset.connection"
@@ -71,7 +83,9 @@ class BluetoothManager {
 }
 
 class BluetoothAdapter {
-    var state = 12
+    var powerState = 12
+    var readState: () -> Int = { powerState }
+    val state get() = readState()
     val listeners = mutableMapOf<Int, BluetoothProfile.ServiceListener>()
     val closed = mutableListOf<BluetoothProfile>()
 

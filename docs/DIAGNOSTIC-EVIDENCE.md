@@ -126,3 +126,18 @@ inventory and microphone-mute reads cannot delay the mode worker. Each stream ex
 after 750 ms independently. Inventory completion logs are published on the owner only
 when fresh and observed; shutdown discards late results. No inventory or communication
 device observation verifies physical call input or output.
+
+## Beta.17 HFP evidence and identity
+
+`hfp_generation` identifies Bluetooth event/proxy invalidation. Superseded read completions
+are discarded and rechecked after their occupied slot drains. `hfp_labels_known`,
+`hfp_labels_quality`, `hfp_labels_age_ms` and `hfp_labels_query_ms` describe independent
+name/alias evidence without exporting those strings. SCO verification, label inspection and
+power diagnostics use separate process-wide zero-queue workers. Getter stage logs are
+generation-checked on the owner and do not publish after teardown. Both SCO and label
+evidence expire after 750 ms, including time spent asleep or waiting for owner delivery.
+
+Missing labels cannot select a target by its old saved name or imply that an unidentified
+Bluetooth route is a competing device. Only the existing single-HFP/single-endpoint topology
+fallback works without complete labels. Physical speaker and microphone checks remain
+separate from framework evidence.

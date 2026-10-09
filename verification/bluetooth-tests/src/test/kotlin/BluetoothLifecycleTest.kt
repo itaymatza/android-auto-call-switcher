@@ -22,6 +22,8 @@ class BluetoothLifecycleTest {
     private val context = Context()
     private val worker = ManualWorker()
     private val groupWorker = ManualWorker()
+    private val metadataWorker = ManualWorker()
+    private val powerWorker = ManualWorker()
     private var changes = 0
     private val closeables = mutableListOf<AutoCloseable>()
 
@@ -42,7 +44,7 @@ class BluetoothLifecycleTest {
         }
 
     private fun hfp(proxy: BluetoothHeadset = headset()): HfpMonitor {
-        val monitor = HfpMonitor(context, worker) { changes++ }
+        val monitor = HfpMonitor(context, worker, metadataWorker, powerWorker) { changes++ }
         closeables.add(monitor)
         monitor.start()
         context.manager.adapter.connect(BluetoothProfile.HEADSET, proxy)
