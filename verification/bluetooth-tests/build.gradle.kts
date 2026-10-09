@@ -24,6 +24,7 @@ sourceSets.main {
         include("org/carcallrouter/companion/telecom/AudioFrameworkProbe.kt")
         include("org/carcallrouter/companion/telecom/HfpMonitor.kt", "org/carcallrouter/companion/ProjectionMonitor.kt")
         include("org/carcallrouter/companion/ui/CallDevicePreflight.kt")
+        include("org/carcallrouter/companion/ui/PairedDeviceQuery.kt")
         include("org/carcallrouter/companion/ui/CallDeviceCompatibility.kt")
         include("org/carcallrouter/companion/ui/LeAudioGroupConnection.kt")
     }
@@ -47,6 +48,7 @@ tasks.jacocoTestReport {
                 "org/carcallrouter/companion/telecom/HfpMonitor*",
                 "org/carcallrouter/companion/telecom/AudioFrameworkProbe*",
                 "org/carcallrouter/companion/ui/CallDevicePreflight*",
+                "org/carcallrouter/companion/ui/PairedDeviceQuery*",
             )
         },
     )

@@ -146,6 +146,100 @@ private fun countEquals(
 fun main(args: Array<String>) {
     val tests =
         listOf<Pair<String, () -> Unit>>(
+            "service_loss_replaces_previous_success_with_incomplete_observation" to {
+                Fixture().use { f ->
+                    RouterSettings(f.service).recordLastSession("RELEASED", "TARGET_AUDIO_CONFIRMED", "TARGET_HFP_AUDIO")
+                    f.activateAndSettle()
+                    f.service.onUnbind(Intent())
+                    check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.INCOMPLETE)
+                }
+            },
+            "new_call_waits_for_its_own_endpoint_snapshot" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    val next = Call(Call.Details(Call.STATE_RINGING))
+                    f.service.onCallAdded(next)
+                    next.deliverState(Call.STATE_ACTIVE)
+                    f.flush()
+                    TestQueue.advanceTo(1000)
+                    countEquals(f, 1)
+                    f.endpoints(listOf(target, competing, other))
+                    TestQueue.advanceTo(1500)
+                    countEquals(f, 2)
+                }
+            },
+            "manual_retry_ignores_old_automatic_result" to {
+                Fixture().use { f ->
+                    f.service.autoCompleteRequests = false
+                    f.activateAndSettle()
+                    val old =
+                        f.service.pendingRequests
+                            .single()
+                            .receiver
+                    f.service.pauseSession()
+                    f.service.routeNow()
+                    f.flush()
+                    old.onError(CallEndpointException(CallEndpointException.ERROR_ANOTHER_REQUEST))
+                    f.flush()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    check("TARGET_AUDIO_CONFIRMED" in SessionBridge.status) { SessionBridge.status }
+                    check(RouterLog.events.any { it.first == "ROUTE_RESULT_IGNORED" })
+                }
+            },
+            "manual_button_does_not_replace_an_unfinished_transaction" to {
+                Fixture(enabled = false).use { f ->
+                    f.activateWithoutSettling()
+                    f.service.routeNow()
+                    f.flush()
+                    TestQueue.advanceTo(2000)
+                    f.service.routeNow()
+                    f.flush()
+                    countEquals(f, 1)
+                }
+            },
+            "third_bluetooth_selection_during_dialing_survives_answer" to {
+                Fixture(initialState = Call.STATE_DIALING).use { f ->
+                    TestQueue.advanceTo(500)
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(800)
+                    f.route(other)
+                    HfpMonitor.audioDevices = setOf(OTHER)
+                    f.activateWithoutSettling()
+                    TestQueue.advanceTo(1400)
+                    countEquals(f, 1)
+                    check("USER_OVERRIDE" in SessionBridge.status)
+                }
+            },
+            "explicit_protected_request_before_initial_routing_is_respected" to {
+                listOf(speaker, handset, wired, other).forEach { selected ->
+                    Fixture().use { f ->
+                        f.activateWithoutSettling()
+                        f.service.onCallEndpointRequested(selected)
+                        f.flush()
+                        TestQueue.advanceTo(1000)
+                        countEquals(f, 0)
+                        check("USER_OVERRIDE" in SessionBridge.status)
+                    }
+                }
+            },
+            "multiple_reported_hfp_audio_owners_cannot_confirm_or_recover" to {
+                Fixture(initialEndpoint = target).use { f ->
+                    f.activateAndSettle()
+                    HfpMonitor.audioDevices = setOf(TARGET, COMPETING)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    TestQueue.advanceTo(800)
+                    check(!SessionBridge.status.contains("Selected device confirmed=true"))
+                    HfpMonitor.audioDevices = setOf(COMPETING, OTHER)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    TestQueue.advanceTo(4500)
+                    countEquals(f, 1)
+                }
+            },
             "dialing_boundary_is_captured_with_early_routing" to {
                 Fixture(initialState = Call.STATE_DIALING).use { f ->
                     TestQueue.advanceTo(500)
@@ -251,7 +345,7 @@ fun main(args: Array<String>) {
                 Fixture(initialEndpoint = target).use { f ->
                     f.activateWithoutSettling()
                     TestQueue.advanceTo(100)
-                    f.service.onCallEndpointRequested(other)
+                    f.service.onCallEndpointRequested(competing)
                     f.flush()
                     TestQueue.advanceTo(449)
                     countEquals(f, 0)
@@ -425,7 +519,7 @@ fun main(args: Array<String>) {
                 Fixture(initialEndpoint = target).use { f ->
                     f.activateAndSettle()
                     countEquals(f, 1)
-                    f.service.onCallEndpointRequested(other)
+                    f.service.onCallEndpointRequested(competing)
                     f.flush()
                     TestQueue.advanceTo(4_500)
                     countEquals(f, 1)
@@ -830,6 +924,7 @@ fun main(args: Array<String>) {
                 Fixture().use { f ->
                     f.activateAndSettle()
                     f.service.onCallRemoved(f.call)
+                    f.endpoints(listOf(target, competing, other))
                     f.route(competing)
                     val next = Call(Call.Details(Call.STATE_RINGING))
                     f.service.onCallAdded(next)

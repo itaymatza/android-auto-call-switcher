@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 env:
-  BASE_VERSION_CODE: '19'
-  BASE_VERSION_NAME: 0.3.0-beta.17
+  BASE_VERSION_CODE: '20'
+  BASE_VERSION_NAME: 0.3.0-beta.18
 
 jobs:
   host-contract:
@@ -92,7 +92,7 @@ jobs:
       - name: Verify APK signature and manifest identity
         env:
           REPORT_FILE: verification/current/apk-verification.txt
-        run: bash tools/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk org.carcallrouter.companion 19 0.3.0-beta.17 34 36 true
+        run: bash tools/verify-apk.sh app/build/outputs/apk/debug/app-debug.apk org.carcallrouter.companion 20 0.3.0-beta.18 34 36 true
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -119,10 +119,10 @@ jobs:
             -storepass "$BETA_KEYSTORE_PASSWORD" -alias "$BETA_KEY_ALIAS" \
             | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -n 1)"
           bash gradlew :app:assembleDebug -PENABLE_BETA_SIGNING=true \
-            -PAPP_VERSION_NAME=0.3.0-beta.17.ci --stacktrace --console=plain
+            -PAPP_VERSION_NAME=0.3.0-beta.18.ci --stacktrace --console=plain
           EXPECTED_CERT_SHA256="$expected_cert" bash tools/verify-apk.sh \
             app/build/outputs/apk/debug/app-debug.apk \
-            org.carcallrouter.companion 19 0.3.0-beta.17.ci 34 36 true
+            org.carcallrouter.companion 20 0.3.0-beta.18.ci 34 36 true
 
   publish-debug:
     name: Publish verified debug beta
@@ -205,23 +205,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            mapfile -t existing < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
-            for asset in "$APK_NAME" "$APK_NAME.sha256" apk-verification.txt; do
-              if ! printf '%s\n' "${existing[@]}" | grep -Fxq "$asset"; then
-                gh release upload "$RELEASE_TAG" "dist/$asset"
-              fi
-            done
-          else
-            gh release create "$RELEASE_TAG" \
-              "dist/$APK_NAME" \
-              "dist/$APK_NAME.sha256" \
-              dist/apk-verification.txt \
-              --target "$GITHUB_SHA" \
-              --prerelease \
-              --title "Android Auto Call Switcher $VERSION_NAME (debug beta)" \
-              --notes-file docs/DEBUG-PRERELEASE-NOTES.md
-          fi
+          python3 tools/publish_debug_release.py \
+            --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" \
+            --apk "dist/$APK_NAME" --notes docs/DEBUG-PRERELEASE-NOTES.md
           printf '[Download verified APK](https://github.com/%s/releases/download/%s/%s)\n' \
             "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$APK_NAME" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove temporary signing keystore

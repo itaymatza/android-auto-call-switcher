@@ -45,6 +45,11 @@ class ParkedReportTest(unittest.TestCase):
         self.assertEqual([], result["reports"])
         self.assertFalse(result["automatic_audio_confirmation"])
 
+    def test_report_cannot_span_calls_or_qualify_an_absent_call(self):
+        for start, end in (("NONE", "NONE"), ("1", "2"), ("1", ""), ("0", "0")):
+            self.assertFalse(reports.analyze([report(sessionAtStart=start, sessionAtEnd=end)])["acceptable"])
+        self.assertTrue(reports.analyze([report(sessionAtStart="1234", sessionAtEnd="1234")])["acceptable"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,7 @@ class RouterApplication : Application() {
         RouterLog.event(
             "PROCESS_START",
             "version=${BuildConfig.VERSION_NAME}; sdk=${android.os.Build.VERSION.SDK_INT}; " +
-                "${ProcessDiagnostics.snapshot(this)}; previousExit=${ProcessDiagnostics.previousExit(this)}",
+                "${ProcessDiagnostics.snapshot(this)}",
         )
     }
 }

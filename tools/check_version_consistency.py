@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -22,7 +23,10 @@ def capture(path: str, pattern: str, label: str) -> str:
     return match.group(1).strip()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tag", default="", help="when set, must exactly match the source version")
+    args = parser.parse_args(argv)
     try:
         version_code = capture(
             "app/build.gradle.kts",
@@ -36,6 +40,10 @@ def main() -> int:
         )
     except ValueError as error:
         print(error, file=sys.stderr)
+        return 1
+
+    if args.tag and args.tag != f"v{version_name}":
+        print(f"Release tag {args.tag!r} does not match source v{version_name}", file=sys.stderr)
         return 1
 
     expected = {

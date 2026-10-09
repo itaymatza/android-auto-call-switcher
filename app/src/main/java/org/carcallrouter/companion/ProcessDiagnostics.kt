@@ -4,12 +4,61 @@ import android.app.ActivityManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import org.carcallrouter.companion.core.DiagnosticSampler
+import java.util.concurrent.Executor
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /** Privacy-safe process/UI facts used to diagnose cold-start and background binding failures. */
 object ProcessDiagnostics {
     private val startedAt = SystemClock.elapsedRealtime()
+    private val handler = Handler(Looper.getMainLooper())
+    private val worker =
+        ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>(), { task ->
+            Thread(task, "router-process-diagnostics").apply { isDaemon = true }
+        })
+    private var sampler: DiagnosticSampler<Map<String, Any?>>? = null
+
+    private fun environment(context: Context): Map<String, Any?> {
+        val app = context.applicationContext
+        val source =
+            sampler ?: DiagnosticSampler(
+                worker,
+                Executor { handler.post(it) },
+                SystemClock::elapsedRealtime,
+                read = { readEnvironment(app) },
+                observed = { RouterLog.event("PROCESS_ENVIRONMENT", it.entries.joinToString("; ") { (key, value) -> "$key=$value" }) },
+            ).also { sampler = it }
+        val observation = source.sample()
+        return observation?.value.orEmpty() +
+            mapOf(
+                "process_probe_quality" to if (observation == null) "UNAVAILABLE" else "OBSERVED",
+                "process_probe_age_ms" to observation?.let { SystemClock.elapsedRealtime() - it.sampledAt },
+            )
+    }
+
+    private fun readEnvironment(context: Context): Map<String, Any?> {
+        val processInfo = ActivityManager.RunningAppProcessInfo()
+        val importance =
+            runCatching {
+                ActivityManager.getMyMemoryState(processInfo)
+                processInfo.importance
+            }.getOrNull()
+        val power = context.getSystemService(PowerManager::class.java)
+        val usage = context.getSystemService(UsageStatsManager::class.java)
+        return mapOf(
+            "importance" to importance,
+            "interactive" to runCatching { power?.isInteractive }.getOrNull(),
+            "battery_exempt" to runCatching { power?.isIgnoringBatteryOptimizations(context.packageName) }.getOrNull(),
+            "standby_bucket" to runCatching { usage?.appStandbyBucket }.getOrNull(),
+            "previous_exit" to readPreviousExit(context),
+        )
+    }
 
     @Volatile
     private var uiState = "NEVER_OPENED"
@@ -27,23 +76,13 @@ object ProcessDiagnostics {
         )
     }
 
-    fun snapshot(context: Context): String {
-        val processInfo = ActivityManager.RunningAppProcessInfo()
-        ActivityManager.getMyMemoryState(processInfo)
-        val power = context.getSystemService(PowerManager::class.java)
-        val usage = context.getSystemService(UsageStatsManager::class.java)
-        return "processAgeMs=${processAgeMs()}; uiState=$uiState; importance=${processInfo.importance}; " +
-            "interactive=${power?.isInteractive}; batteryExempt=${power?.isIgnoringBatteryOptimizations(context.packageName)}; " +
-            "standbyBucket=${runCatching { usage?.appStandbyBucket }.getOrNull() ?: "unknown"}"
-    }
+    fun snapshot(context: Context): String =
+        "processAgeMs=${processAgeMs()}; uiState=$uiState; " +
+            environment(context).entries.joinToString("; ") { (key, value) -> "$key=$value" }
 
     /** Structured, privacy-safe environment fields attached to each routing session. */
-    fun traceFields(context: Context): Array<Pair<String, Any?>> {
-        val processInfo = ActivityManager.RunningAppProcessInfo()
-        ActivityManager.getMyMemoryState(processInfo)
-        val power = context.getSystemService(PowerManager::class.java)
-        val usage = context.getSystemService(UsageStatsManager::class.java)
-        return arrayOf(
+    fun traceFields(context: Context): Array<Pair<String, Any?>> =
+        arrayOf(
             "app_version" to BuildConfig.VERSION_NAME,
             "app_version_code" to BuildConfig.VERSION_CODE,
             "sdk" to Build.VERSION.SDK_INT,
@@ -53,14 +92,10 @@ object ProcessDiagnostics {
             "model" to Build.MODEL,
             "process_age_ms" to processAgeMs(),
             "ui_state" to uiState,
-            "importance" to processInfo.importance,
-            "interactive" to power?.isInteractive,
-            "battery_exempt" to power?.isIgnoringBatteryOptimizations(context.packageName),
-            "standby_bucket" to runCatching { usage?.appStandbyBucket }.getOrNull(),
+            *environment(context).toList().toTypedArray(),
         )
-    }
 
-    fun previousExit(context: Context): String {
+    private fun readPreviousExit(context: Context): String {
         val manager = context.getSystemService(ActivityManager::class.java) ?: return "unavailable"
         val exit =
             runCatching { manager.getHistoricalProcessExitReasons(null, 0, 1).firstOrNull() }.getOrNull()

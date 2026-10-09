@@ -35,6 +35,13 @@ def analyze(lines: Iterable[str]) -> dict:
                 or any(fields.get(key) not in ANSWERS for key in OBSERVATIONS)):
             errors.append(f"line {number}: invalid parked-test report")
             continue
+        # Newer apps bind the answers to one completed call. A dialog spanning another
+        # call, or one with no completed call, cannot qualify either session.
+        if "sessionAtStart" in fields or "sessionAtEnd" in fields:
+            start, end = fields.get("sessionAtStart", ""), fields.get("sessionAtEnd", "")
+            if not start.isdigit() or int(start) <= 0 or start != end:
+                errors.append(f"line {number}: parked-test report is not tied to one completed call")
+                continue
         reports.append({key: fields[key] for key in OBSERVATIONS})
     return {
         "source": "user_report",

@@ -7,8 +7,8 @@ The Android Gradle module accepts three optional Gradle properties. They may be 
 | Property | Default | Purpose |
 |---|---|---|
 | `APP_APPLICATION_ID` | `org.carcallrouter.companion` | Installable Android application ID. Choose an ID controlled by the build owner. |
-| `APP_VERSION_CODE` | `19` | Monotonically increasing Android version code. |
-| `APP_VERSION_NAME` | `0.3.0-beta.17` | Human-readable version string. |
+| `APP_VERSION_CODE` | `20` | Monotonically increasing Android version code. |
+| `APP_VERSION_NAME` | `0.3.0-beta.18` | Human-readable version string. |
 
 Example:
 
@@ -16,7 +16,7 @@ Example:
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
   -PAPP_VERSION_CODE=16 \
-  -PAPP_VERSION_NAME=0.3.0-beta.17 \
+  -PAPP_VERSION_NAME=0.3.0-beta.18 \
   :app:assembleDebug
 ```
 
