@@ -1,6 +1,8 @@
 package org.carcallrouter.companion.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CallDeviceCompatibilityTest {
@@ -13,7 +15,7 @@ class CallDeviceCompatibilityTest {
     private fun resolve(
         target: String?,
         profiles: Map<Int, Set<String>?>,
-    ) = CallDeviceCompatibility.resolve(target, profiles, classic, setOf(le, hearingAid))
+    ) = CallDeviceCompatibility.resolve(target, profiles, classic, le, hearingAid)
 
     @Test fun noSelectionAndPendingInspectionAreDistinct() {
         assertEquals(CallDeviceCompatibility.NO_TARGET, resolve(null, emptyMap()))
@@ -28,14 +30,20 @@ class CallDeviceCompatibilityTest {
     @Test fun leAndHearingAidConnectionsNeverBecomeClassicEvidence() {
         for (profile in setOf(le, hearingAid)) {
             assertEquals(
-                CallDeviceCompatibility.OTHER_TRANSPORT_CONNECTED,
+                if (profile == le) CallDeviceCompatibility.LE_CONNECTED else CallDeviceCompatibility.HEARING_AID_CONNECTED,
                 resolve(target, mapOf(classic to emptySet(), profile to setOf(target))),
             )
         }
     }
 
     @Test fun unknownClassicDoesNotHideObservedOtherTransport() {
-        assertEquals(CallDeviceCompatibility.OTHER_TRANSPORT_CONNECTED, resolve(target, mapOf(classic to null, le to setOf(target))))
+        assertEquals(CallDeviceCompatibility.LE_CONNECTED, resolve(target, mapOf(classic to null, le to setOf(target))))
+    }
+
+    @Test fun combinedOtherTransportsRemainDistinctAndNeverOverrideClassic() {
+        val otherTransports = mapOf(classic to emptySet(), le to setOf(target), hearingAid to setOf(target))
+        assertEquals(CallDeviceCompatibility.LE_AND_HEARING_AID_CONNECTED, resolve(target, otherTransports))
+        assertEquals(CallDeviceCompatibility.CLASSIC_CONNECTED, resolve(target, otherTransports + (classic to setOf(target))))
     }
 
     @Test fun incompleteQueriesNeverDeclareTargetDisconnected() {
@@ -48,5 +56,14 @@ class CallDeviceCompatibilityTest {
             CallDeviceCompatibility.NOT_CONNECTED,
             resolve(target, mapOf(classic to setOf(other), le to setOf(other), hearingAid to emptySet())),
         )
+    }
+
+    @Test fun onlyObservedUnsupportedTransportWithKnownClassicAbsenceBlocksSetup() {
+        for (state in CallDeviceCompatibility.entries) {
+            assertFalse(state.blocksAutomaticSetup(false))
+            assertEquals(state.leObserved || state == CallDeviceCompatibility.HEARING_AID_CONNECTED, state.blocksAutomaticSetup(true))
+        }
+        assertTrue(resolve(target, mapOf(classic to emptySet(), le to setOf(target))).blocksAutomaticSetup(true))
+        assertFalse(resolve(target, mapOf(classic to setOf(target), le to setOf(target))).blocksAutomaticSetup(true))
     }
 }

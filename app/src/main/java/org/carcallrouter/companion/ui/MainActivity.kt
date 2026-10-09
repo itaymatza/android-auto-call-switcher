@@ -64,7 +64,7 @@ class MainActivity : Activity() {
     private var monitor: ProjectionMonitor? = null
     private var preflight: CallDevicePreflight? = null
     private var projection: Boolean? = null
-    private var lastPreflightState: Pair<String?, CallDeviceCompatibility>? = null
+    private var lastPreflightState: Triple<String?, CallDeviceCompatibility, LeAudioGroupConnection?>? = null
     private val statusListener: () -> Unit = { refresh() }
     private val logListener: () -> Unit = { logs.text = RouterLog.recentText() }
 
@@ -221,6 +221,17 @@ class MainActivity : Activity() {
             telecomAuthorized = Access.ongoingCalls(this),
             targetSelected = settings.targetAddress != null,
             automationEnabled = settings.enabled,
+            unsupportedCallTransport =
+                currentDeviceCompatibility().blocksAutomaticSetup(preflight?.connections?.get(BluetoothProfile.HEADSET) != null),
+        )
+
+    private fun currentDeviceCompatibility() =
+        CallDeviceCompatibility.resolve(
+            settings.targetAddress,
+            preflight?.connections ?: emptyMap(),
+            BluetoothProfile.HEADSET,
+            BluetoothProfile.LE_AUDIO,
+            BluetoothProfile.HEARING_AID,
         )
 
     @SuppressLint("SetTextI18n")
@@ -233,32 +244,49 @@ class MainActivity : Activity() {
         master.isEnabled = setup.ready || settings.enabled
         syncing = false
 
-        val compatibility =
-            CallDeviceCompatibility.resolve(
-                settings.targetAddress,
-                preflight?.connections ?: emptyMap(),
-                BluetoothProfile.HEADSET,
-                setOf(BluetoothProfile.LE_AUDIO, BluetoothProfile.HEARING_AID),
-            )
-        val preflightState = settings.targetAddress to compatibility
+        val compatibility = currentDeviceCompatibility()
+        val leObserved = compatibility.leObserved
+        val group = if (leObserved) preflight?.leGroup(settings.targetAddress) else null
+        val preflightState = Triple(settings.targetAddress, compatibility, group)
         if (lastPreflightState != preflightState) {
             lastPreflightState = preflightState
             RouterLog.event(
                 "DEVICE_PREFLIGHT",
                 "target=${settings.targetAddress?.let(RouterLog::deviceId) ?: "NONE"}; " +
-                    "compatibility=$compatibility; evidence=profile_connection_only; active_audio_verified=false",
+                    "compatibility=$compatibility; evidence=profile_connection_only; active_audio_verified=false; " +
+                    "le_group=${group?.groupId?.let { RouterLog.deviceId("le-group:$it") } ?: "UNKNOWN"}; " +
+                    "le_connected_members=${group?.members?.size ?: "UNKNOWN"}; " +
+                    "le_lead=${group?.lead?.let(RouterLog::deviceId) ?: "UNKNOWN"}; " +
+                    "le_lead_connected=${group?.leadConnected ?: "UNKNOWN"}",
             )
         }
-        deviceCompatibility.setText(
-            when (compatibility) {
-                CallDeviceCompatibility.NO_TARGET -> R.string.compatibility_no_target
-                CallDeviceCompatibility.CHECKING -> R.string.compatibility_checking
-                CallDeviceCompatibility.CLASSIC_CONNECTED -> R.string.compatibility_classic
-                CallDeviceCompatibility.OTHER_TRANSPORT_CONNECTED -> R.string.compatibility_other
-                CallDeviceCompatibility.NOT_CONNECTED -> R.string.compatibility_disconnected
-                CallDeviceCompatibility.UNKNOWN -> R.string.compatibility_unknown
-            },
-        )
+        val compatibilityMessage =
+            getString(
+                when (compatibility) {
+                    CallDeviceCompatibility.NO_TARGET -> R.string.compatibility_no_target
+                    CallDeviceCompatibility.CHECKING -> R.string.compatibility_checking
+                    CallDeviceCompatibility.CLASSIC_CONNECTED -> R.string.compatibility_classic
+                    CallDeviceCompatibility.LE_CONNECTED -> R.string.compatibility_le
+                    CallDeviceCompatibility.HEARING_AID_CONNECTED -> R.string.compatibility_hearing_aid
+                    CallDeviceCompatibility.LE_AND_HEARING_AID_CONNECTED -> R.string.compatibility_le_and_hearing_aid
+                    CallDeviceCompatibility.NOT_CONNECTED -> R.string.compatibility_disconnected
+                    CallDeviceCompatibility.UNKNOWN -> R.string.compatibility_unknown
+                },
+            )
+        deviceCompatibility.text =
+            compatibilityMessage +
+            if (leObserved) {
+                "\n" +
+                    if (group == null) {
+                        getString(R.string.compatibility_le_group_unknown)
+                    } else if (!group.leadConnected) {
+                        getString(R.string.compatibility_le_lead_disconnected)
+                    } else {
+                        resources.getQuantityString(R.plurals.compatibility_le_group, group.members.size, group.members.size)
+                    }
+            } else {
+                ""
+            }
         setupProgress.text =
             resources.getQuantityString(
                 R.plurals.setup_progress,
@@ -292,6 +320,7 @@ class MainActivity : Activity() {
 
         masterHelp.setText(
             when {
+                setup.phase == SetupPhase.UNSUPPORTED_CALL_TRANSPORT -> R.string.master_help_transport
                 !setup.ready -> R.string.master_help_locked
                 settings.enabled -> R.string.master_help_active
                 else -> R.string.master_help_ready
@@ -375,6 +404,14 @@ class MainActivity : Activity() {
                     R.string.setup_required,
                     R.string.readiness_target_title,
                     R.string.readiness_target_message,
+                )
+            SetupPhase.UNSUPPORTED_CALL_TRANSPORT ->
+                setReadiness(
+                    R.drawable.bg_status_warning,
+                    R.color.warning,
+                    R.string.transport_required,
+                    R.string.readiness_transport_title,
+                    R.string.readiness_transport_message,
                 )
             SetupPhase.READY ->
                 setReadiness(
