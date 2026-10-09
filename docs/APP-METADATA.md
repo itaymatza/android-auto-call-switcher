@@ -1,8 +1,7 @@
 # App metadata
 
 The installed application, release titles, and reusable store listing use the product identity
-**Android Auto Call Switcher**. The canonical repository is `itaymatza/android-auto-call-switcher`. This link migration must
-merge only after the admin repository rename; old links remain migration aliases.
+**Android Auto Call Switcher**. The canonical repository is `itaymatza/android-auto-call-switcher`. The repository was renamed in GitHub Settings on 2026-10-09; old links remain migration aliases.
 The package remains `org.carcallrouter.companion` for in-place update continuity.
 See [the completeness audit](PRODUCT-COMPLETENESS.md) for the full migration checklist. The app is an independent utility.
 
