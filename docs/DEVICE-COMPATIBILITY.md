@@ -14,6 +14,28 @@ HFP must actually expose a connected HFP call endpoint; pairing alone is insuffi
 Selection uses the paired device identity and current call capability; there is no
 car-brand allowlist. A media-only Bluetooth speaker cannot supply a call endpoint.
 
+## Foreground transport inspection
+
+The compatibility check distinguishes classic HFP, LE Audio, hearing-aid connections, and a
+device observed on both non-classic profiles. A fresh observed non-classic connection without
+an observed HFP connection shows a transport warning instead of a ready/active setup card. It
+blocks turning automation on until a supported connection is observed or the inspection becomes
+unknown; unknown results still cannot satisfy the independent per-call HFP routing guard. An
+already-enabled switch remains available so the user can turn automation off.
+
+For LE Audio, the app separately reads the selected connected member's current group and lead
+device. Either connected earbud can identify the same group, but a disconnected selected member,
+invalid group, unreadable peer, missing lead, or contradictory connected lead does not establish
+group identity. Android may retain a disconnected lead; the UI reports that case separately.
+Optional group reads run on their own bounded worker, expire, stop with the foreground activity,
+and never authorize a call request or change a media route. Exported diagnostics contain salted
+aliases and counts, not raw Bluetooth addresses, device names, or group IDs.
+
+Group identity is groundwork for another transport backend, not completed LE Audio routing.
+Connection/group observations do not prove active call speaker or microphone audio. Automatic
+switching still requires classic HFP. See Android's [LE Audio API contract](https://developer.android.com/reference/android/bluetooth/BluetoothLeAudio)
+for group membership and retained lead behavior.
+
 ## Required conditions
 
 - Android 14 or newer (API 34+).

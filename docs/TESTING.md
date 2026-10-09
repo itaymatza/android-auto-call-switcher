@@ -231,3 +231,12 @@ The foreground compatibility check reports connection observations only. Verify 
 dual-transport, LE-only and hearing-aid devices, Bluetooth off, permission revocation, return
 from device settings, and stopping/restarting the activity on physical hardware. No HFP
 connection means the routing service still waits/stops under its existing bounded policy.
+
+For the LE group inspection, test either earbud selected, one member disconnected, a retained
+disconnected lead, two connected groups, unknown/invalid group IDs, proxy replacement, Bluetooth
+permission revocation, stale or stalled group queries, and activity stop/restart. Confirm that
+group queries cannot block the classic connection check and that logs contain only aliases/counts.
+When LE/hearing-aid is observed and a fresh classic-profile query does not contain the selected
+device, the readiness card must show the transport warning, not ready/active. Turning automation
+on must be unavailable, while an already-enabled switch must still allow turning it off. A fresh
+classic connection restores normal setup behavior; unknown evidence never grants per-call routing.

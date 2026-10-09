@@ -65,4 +65,16 @@ class SetupStateTest {
         }
         assertEquals(16, combinations)
     }
+
+    @Test fun observedUnsupportedTransportBlocksReadyAndActiveWithoutLosingSetup() {
+        for (enabled in listOf(false, true)) {
+            val state = SetupState(true, true, true, enabled, unsupportedCallTransport = true)
+            assertFalse(state.ready)
+            assertEquals(3, state.completedSteps)
+            assertEquals(SetupPhase.UNSUPPORTED_CALL_TRANSPORT, state.phase)
+        }
+        assertEquals(SetupPhase.NEEDS_RUNTIME_PERMISSIONS, SetupState(false, true, true, true, true).phase)
+        assertEquals(SetupPhase.NEEDS_TARGET_DEVICE, SetupState(true, true, false, true, true).phase)
+        assertEquals(SetupPhase.UNSUPPORTED_CALL_TRANSPORT, SetupState(true, false, true, true, true).phase)
+    }
 }

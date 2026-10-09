@@ -31,6 +31,34 @@ class CallDevicePreflight(
     private val proxies = mutableMapOf<Int, BluetoothProfile>()
     private var registered = false
     private var closed = false
+
+    private data class Groups(
+        val members: Map<String, Int?>,
+        val leads: Map<Int, String?>,
+    )
+
+    private var groupSnapshot: Groups? = null
+    private var groupSampledAt = 0L
+    private val groupExpire = Runnable { changed() }
+    private val groupQuery =
+        SingleFlightQuery<Groups>(
+            groupWorker,
+            Executor { handler.post(it) },
+            SystemClock::elapsedRealtime,
+        ) { result, _, started ->
+            groupSampledAt = SystemClock.elapsedRealtime()
+            groupSnapshot = if (groupSampledAt - started <= MAX_QUERY_AGE_MS) result.getOrNull() else null
+            handler.removeCallbacks(groupExpire)
+            handler.postDelayed(groupExpire, MAX_OBSERVATION_AGE_MS + 1)
+            changed()
+        }
+
+    fun leGroup(target: String?): LeAudioGroupConnection? {
+        if (SystemClock.elapsedRealtime() - groupSampledAt > MAX_OBSERVATION_AGE_MS) return null
+        val groups = groupSnapshot ?: return null
+        return LeAudioGroupConnection.resolve(target, groups.members, groups.leads)
+    }
+
     private val query =
         SingleFlightQuery<Map<Int, Set<String>?>>(
             worker,
@@ -72,7 +100,11 @@ class CallDevicePreflight(
                         runCatching { adapter?.closeProfileProxy(profile, proxy) }
                     } else {
                         query.invalidate()
+                        groupQuery.invalidate()
+                        groupSnapshot = null
+                        snapshot = unknownConnections()
                         proxies[profile] = proxy
+                        changed()
                         refresh()
                     }
                 }
@@ -82,6 +114,8 @@ class CallDevicePreflight(
                 handler.post {
                     if (!closed) {
                         query.invalidate()
+                        groupQuery.invalidate()
+                        groupSnapshot = null
                         proxies.remove(profile)
                         snapshot = unknownConnections()
                         changed()
@@ -137,6 +171,8 @@ class CallDevicePreflight(
         if (closed) return
         if (!Access.bluetoothGranted(context)) {
             query.invalidate()
+            groupQuery.invalidate()
+            groupSnapshot = null
             snapshot = unknownConnections()
             changed()
             return
@@ -147,18 +183,36 @@ class CallDevicePreflight(
                 runCatching { currentProxies[profile]?.connectedDevices?.map { it.address.uppercase() }?.toSet() }.getOrNull()
             }
         }
+        val le = currentProxies[BluetoothProfile.LE_AUDIO] as? BluetoothLeAudio
+        if (le == null) {
+            groupQuery.invalidate()
+            groupSnapshot = null
+        } else {
+            groupQuery.submit {
+                val devices = le.connectedDevices
+                val members = devices.associate { it.address.uppercase() to runCatching { le.getGroupId(it) }.getOrNull() }
+                val leads =
+                    members.values.filterNotNull().filter { it >= 0 }.distinct().associateWith { group ->
+                        runCatching { le.getConnectedGroupLeadDevice(group)?.address?.uppercase() }.getOrNull()
+                    }
+                Groups(members, leads)
+            }
+        }
     }
 
     override fun close() {
         closed = true
         handler.removeCallbacks(poll)
         handler.removeCallbacks(expire)
+        handler.removeCallbacks(groupExpire)
         query.close()
+        groupQuery.close()
         if (registered) runCatching { context.unregisterReceiver(receiver) }
         registered = false
         proxies.forEach { (profile, proxy) -> runCatching { adapter?.closeProfileProxy(profile, proxy) } }
         proxies.clear()
         snapshot = emptyMap()
+        groupSnapshot = null
     }
 
     companion object {
@@ -171,6 +225,12 @@ class CallDevicePreflight(
         private val worker =
             ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>(), { task ->
                 Thread(task, "router-preflight-query").apply { isDaemon = true }
+            })
+
+        // Optional LE group queries cannot block classic profile inspection.
+        private val groupWorker =
+            ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>(), { task ->
+                Thread(task, "router-le-group-query").apply { isDaemon = true }
             })
     }
 }
