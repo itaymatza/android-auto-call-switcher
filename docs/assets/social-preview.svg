@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title description">
-  <title id="title">Car Call Router</title>
+  <title id="title">Android Auto Call Switcher</title>
   <desc id="description">Android Auto navigation and media with calls routed to a preferred Bluetooth hands-free device.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
@@ -18,17 +18,17 @@
   <circle cx="1125" cy="105" r="260" fill="#2b77b8" opacity=".18"/>
   <circle cx="1080" cy="585" r="340" fill="#1bb68a" opacity=".10"/>
   <g transform="translate(80 76)">
-    <rect width="1120" height="488" rx="34" fill="#0a203b" stroke="#64d9f5" stroke-opacity=".24" filter="url(#shadow)"/>
+    <rect width="1120" height="488" rx="34" fill="#0a203b" stroke="#64d9f5" stroke-opacity=".24"/>
     <g transform="translate(58 64)">
       <rect width="102" height="102" rx="24" fill="url(#accent)"/>
       <path d="M31 70V45a20 20 0 0 1 20-20h10a20 20 0 0 1 20 20v25" fill="none" stroke="#07223b" stroke-width="9" stroke-linecap="round"/>
       <path d="M23 63h16v20H23a8 8 0 0 1-8-8v-4a8 8 0 0 1 8-8Zm66 0h-16v20h16a8 8 0 0 0 8-8v-4a8 8 0 0 0-8-8Z" fill="#07223b"/>
       <path d="M51 83h24" stroke="#07223b" stroke-width="8" stroke-linecap="round"/>
     </g>
-    <text x="190" y="124" fill="#fff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="66" font-weight="750">Car Call Router</text>
+    <text x="190" y="124" fill="#fff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="52" font-weight="750">Android Auto Call Switcher</text>
     <text x="60" y="240" fill="#b8d5eb" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34">Android Auto for navigation and media.</text>
-    <text x="60" y="292" fill="#fff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="38" font-weight="650">Your preferred Bluetooth HFP for calls.</text>
+    <text x="60" y="292" fill="#fff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="38" font-weight="650">Your chosen Bluetooth for calls.</text>
     <rect x="60" y="346" width="662" height="4" rx="2" fill="url(#accent)"/>
-    <text x="60" y="414" fill="#89b7d8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="24" letter-spacing="1.5">ANDROID 14+   •   KOTLIN   •   SAFETY-BOUNDED</text>
+    <text x="60" y="414" fill="#89b7d8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="24" letter-spacing="1.5">ANDROID 14+   •   CLASSIC HANDS-FREE   •   CELLULAR CALLS</text>
   </g>
 </svg>

@@ -1,5 +1,7 @@
 # Android Auto Call Switcher
 
+![Android Auto Call Switcher](docs/assets/social-preview.png)
+
 [![Build](https://github.com/itaymatza/car-call-router/actions/workflows/build.yml/badge.svg)](https://github.com/itaymatza/car-call-router/actions/workflows/build.yml)
 [![CodeQL](https://github.com/itaymatza/car-call-router/actions/workflows/codeql.yml/badge.svg)](https://github.com/itaymatza/car-call-router/actions/workflows/codeql.yml)
 [![Latest beta](https://img.shields.io/github/v/release/itaymatza/car-call-router?include_prereleases&label=latest%20beta)](https://github.com/itaymatza/car-call-router/releases)
@@ -163,6 +165,9 @@ certificate across hosted runners; the signed workflow also pins the expected ce
 
 ## Project documentation
 
+
+See the [product completeness audit](docs/PRODUCT-COMPLETENESS.md) for remaining functionality,
+real-device qualification, and repository rename work.
 
 Start with the [FAQ](docs/FAQ.md) and [compatibility guide](docs/DEVICE-COMPATIBILITY.md). Read the
 [architecture reference](docs/ARCHITECTURE.md) for the component boundaries and routing state

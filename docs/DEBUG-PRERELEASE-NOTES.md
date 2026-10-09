@@ -27,13 +27,13 @@ to the workflow and source commit that produced it.
 
 ## What changed in beta.14
 
-- Starts one bounded BMW routing transaction during outgoing dialing, then rechecks fresh
+- Starts one bounded preferred-device routing transaction during outgoing dialing, then rechecks fresh
   audio evidence at answer without replacing a pending request or fighting manual selections.
 - Samples HFP ownership throughout the call, including after a failed startup request.
 - Records observed call duration and call/dialing/answer-relative event timing, late service
   binding, observation gaps and audio loss. Request acceptance alone does not count as success.
 - Maps research questions to exported evidence, adds Bluetooth power and microphone-mute
   diagnostics, and labels unavailable settings and unknown external request origins.
-- Adds deterministic tests for answer takeover, delayed callbacks, absent BMW audio,
+- Adds deterministic tests for answer takeover, delayed callbacks, absent target audio,
   manual overrides and incomplete observation. Physical microphone/speaker behavior and
   seamless Samsung/Android Auto handover still require controlled real-device testing.

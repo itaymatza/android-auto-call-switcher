@@ -132,8 +132,7 @@ capture_app_log() {
         done
     else
         echo "Warning: private app-log access failed; using the current filtered logcat buffer." >&2
-        "${ADB[@]}" logcat -d -v threadtime -s CallRouteCompanion:I '*:S' |
-            awk 'index($0, "ROUTING_TRACE ") {print}' >"$destination"
+        "${ADB[@]}" logcat -d -v threadtime -s CallRouteCompanion:I '*:S' >"$destination"
     fi
 }
 
@@ -174,9 +173,9 @@ EOF
 
 echo "Ready for one $SCENARIO test on $MANUFACTURER $MODEL (API $SDK)."
 echo "Remain parked. Use only a consenting helper or voicemail; never call an emergency number."
-echo "Keep Android Auto and the intended native HFP device connected, then perform the scenario."
+echo "Keep Android Auto and the selected Bluetooth HFP device connected, then perform the scenario."
 read -r -p "Press Enter immediately before starting the call... "
-read -r -p "End the call, wait two seconds for the final trace, then press Enter... "
+read -r -p "End the call, optionally record the in-app parked test, wait two seconds, then press Enter... "
 
 capture_app_log "$TEMP_DIR/after.app"
 python3 "$ROOT/tools/extract_new_app_events.py" "$TEMP_DIR/before.app" "$TEMP_DIR/after.app" >"$OUTPUT/app-events.log"
@@ -201,9 +200,9 @@ ask_observation() {
 }
 
 : >"$OUTPUT/observations.txt"
-ask_observation target_hfp_speaker_heard "Was call audio heard through the intended native HFP speaker?"
-ask_observation target_hfp_microphone_confirmed "Did the helper confirm the intended native HFP microphone?"
-ask_observation android_auto_preserved "Did Android Auto navigation/media remain available?"
+ask_observation target_hfp_speaker_heard "Was call audio heard through the selected Bluetooth call speaker?"
+ask_observation target_hfp_microphone_confirmed "Did the helper confirm the selected Bluetooth call microphone?"
+ask_observation android_auto_preserved "Did Android Auto navigation work during the call and media resume afterward?"
 if [[ "$SCENARIO" == "override" ]]; then
     ask_observation user_override_respected "Was the manual route override respected without route fighting?"
 fi
@@ -214,15 +213,21 @@ if [[ "$SCENARIO" == "selector-recovery" ]]; then
     ask_observation manual_target_speaker_and_mic "Did that manual preferred-device selection move both speaker and microphone?"
 fi
 
+PARKED_REPORTS_OK=false
+if python3 "$ROOT/tools/analyze_parked_reports.py" "$OUTPUT/app-events.log" \
+    --require-acceptable-reports >"$OUTPUT/parked-reports.json"; then
+    PARKED_REPORTS_OK=true
+fi
 VERDICT="FAIL"
 if python3 "$ROOT/tools/analyze_device_trace.py" "$OUTPUT/trace.log" \
     --require-pass --require-diagnostics >/dev/null \
+    && [[ "$PARKED_REPORTS_OK" == true ]] \
     && ! grep -qv '=yes$' "$OUTPUT/observations.txt"; then
     VERDICT="PASS"
 fi
 {
     echo "verdict=$VERDICT"
-    echo "rule=all_new_sessions_have_complete_trace_and_all_required_observations_are_yes"
+    echo "rule=all_new_sessions_have_complete_trace_and_all_required_observations_are_yes_and_no_parked_report_problem"
 } >"$OUTPUT/verdict.txt"
 
 echo

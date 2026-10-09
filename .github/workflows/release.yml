@@ -76,7 +76,7 @@ jobs:
           subject-path: app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: car-call-router-signed-beta
+          name: android-auto-call-switcher-signed-beta
           path: |
             app/build/outputs/apk/release/app-release.apk
             app-release.apk.sha256
