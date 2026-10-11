@@ -643,8 +643,10 @@ class RouterInCallService :
                 previousId != lastEndpointId &&
                 targetEndpoint().endpoint != null &&
                 (
-                    outgoingDialingPhase || settings.competitorAddress != null ||
-                        policy.requests > 0 || previousRoute == RoutingPolicy.Route.TARGET
+                    outgoingDialingPhase ||
+                        settings.competitorAddress != null ||
+                        policy.requests > 0 ||
+                        previousRoute == RoutingPolicy.Route.TARGET
                 )
         if (
             sessionStarted &&
@@ -764,8 +766,11 @@ class RouterInCallService :
             // A different pre-answer Bluetooth choice is also protected when no competing
             // device was configured. Same-current startup requests remain observational.
             val distinctPreAnswerBluetoothRequest =
-                outgoingDialingPhase && callEndpoint.endpointType == CallEndpoint.TYPE_BLUETOOTH &&
-                    router.current() != null && !matchesCurrent && !matchesTarget
+                outgoingDialingPhase &&
+                    callEndpoint.endpointType == CallEndpoint.TYPE_BLUETOOTH &&
+                    router.current() != null &&
+                    !matchesCurrent &&
+                    !matchesTarget
             val protect = protectedRequest || distinctPreAnswerBluetoothRequest
             trace.event(
                 "EXTERNAL_REQUEST_DECISION",
