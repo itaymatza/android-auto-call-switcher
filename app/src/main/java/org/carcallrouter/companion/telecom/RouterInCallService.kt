@@ -1684,7 +1684,13 @@ class RouterInCallService :
             "reason" to reason,
             "deadline_elapsed_ms" to deadline,
             "loss_observed" to postConfirmationLossObserved,
-            "final_target_sco" to confirmedAudioPresent,
+            "final_target_sco" to
+                if (hfp.known && hfp.audioConnected.size <= 1) {
+                    settings.targetAddress?.uppercase()?.let { it in hfp.audioConnected }
+                } else {
+                    null
+                },
+            "last_observed_target_sco" to confirmedAudioPresent,
         )
     }
 
@@ -1754,6 +1760,9 @@ class RouterInCallService :
                 policy.reasonCode,
                 "service_stopped",
                 "observation_incomplete" to records.isNotEmpty(),
+                "last_sampled_audio_health" to lastAudioHealth,
+                "telecom_hfp_mismatch_samples" to mismatchSamples,
+                "first_mismatch_after_answer_ms" to firstMismatchAfterAnswerMs,
                 "user_reported_wrong_audio" to userReportedWrongAudio,
                 "physical_audio_verified" to false,
             )
