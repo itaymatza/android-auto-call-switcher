@@ -63,7 +63,7 @@ the [compatibility guide](docs/DEVICE-COMPATIBILITY.md) and [FAQ](docs/FAQ.md) b
 
 ## Project status
 
-The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.19` collects read-only evidence during outgoing dialing and requests the selected call device only after answer, with a maximum of one automatic target request per call. Unattributed call-start Bluetooth requests cannot cancel a request the app has not yet made. Possible manual choices remain protected. It samples HFP ownership throughout active calls and records call-relative timing, observation gaps, and user-reported wrong audio. Incoming calls retain answer-time routing. Protected call eligibility, authorization and projection-provider reads now run off-thread, and pending or delayed evidence cannot authorize a request. Audio-mode checks and optional device inventories have separate bounded workers and independent freshness. Exact HFP audio, live identity labels and power diagnostics are also isolated; Bluetooth change events invalidate old reads. Multiple-device endpoint matching uses fresh live labels rather than saved names. Seamless physical audio remains subject to device qualification; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
+The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.20` collects read-only evidence during outgoing dialing and requests the selected call device only after answer, with a maximum of one automatic target request per call. Unattributed call-start Bluetooth requests cannot cancel a request the app has not yet made. Possible manual choices remain protected. It samples HFP ownership throughout active calls and records call-relative timing, observation gaps, and user-reported wrong audio. Incoming calls retain answer-time routing. Protected call eligibility, authorization and projection-provider reads now run off-thread, and pending or delayed evidence cannot authorize a request. Audio-mode checks and optional device inventories have separate bounded workers and independent freshness. Exact HFP audio, live identity labels and power diagnostics are also isolated; Bluetooth change events invalidate old reads. Multiple-device endpoint matching uses fresh live labels rather than saved names. Seamless physical audio remains subject to device qualification; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
 
 
 Beta.19 avoids the observed pre-answer routing collision, samples call audio every 500 ms within its service lifetime, and resumes observation after temporary authorization uncertainty. Brief unknown samples that recover within the observation budget no longer permanently poison the call summary; unresolved final samples and long gaps remain incomplete. Exports record unattributed request decisions and retain up to approximately 24 MB of recent diagnostics. See the [fresh review](docs/REVIEW-2026-10-09.md) for evidence and remaining limits.
@@ -89,13 +89,13 @@ The source namespace is the generic value `org.carcallrouter.companion`. Overrid
 ```sh
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
-  -PAPP_VERSION_CODE=21 \
-  -PAPP_VERSION_NAME=0.3.0-beta.19 \
+  -PAPP_VERSION_CODE=22 \
+  -PAPP_VERSION_NAME=0.3.0-beta.20 \
   :app:assembleDebug
 ```
 
 
-`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `21`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.19`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
+`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `22`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.20`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
 
 
 ### Runtime configuration
@@ -121,7 +121,7 @@ account is not required just to download the APK.
 
 | Version | Channel | Downloads |
 | --- | --- | --- |
-| `0.3.0-beta.19` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
+| `0.3.0-beta.20` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
 | `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.10-debug) |
 | `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.9-debug) |
 | `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.7-debug) |
@@ -134,7 +134,7 @@ A new debug APK is published for each successful push to `main` on the [Releases
 
 The easiest path is the durable direct download:
 
-1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.19` debug pre-release.
+1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.20` debug pre-release.
 2. Open the downloaded APK on the Android device.
 3. If Android prompts you, temporarily allow **Install unknown apps** for the browser or file
    manager, install the APK, and then disable that permission again.

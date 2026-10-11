@@ -43,6 +43,9 @@ class SessionSummary:
     external_callbacks: int
     external_request_actions: dict[str, int]
     unattributed_protected_requests: int
+    audio_health_transitions: list[str]
+    audio_unknown_intervals: int
+    mismatch_samples: int | None
     route_changes: int
     route_oscillations: int
     audio_confirmation_losses: int
@@ -206,7 +209,7 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
         )
         audio_confirmation_losses = sum(
             event.event == "CONFIRMED_AUDIO_CHANGED"
-            and event.fields.get("target_sco") != "true"
+            and event.fields.get("target_sco") == "false"
             for event in session_events
         )
         # The watch and terminal record also retain a loss when an intermediate
@@ -314,6 +317,15 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
                 and event.fields.get("user_intent") == "UNVERIFIED"
                 for event in session_events
             ),
+            audio_health_transitions=[
+                event.fields.get("health", "UNKNOWN") for event in session_events
+                if event.event == "AUDIO_ROUTE_HEALTH_CHANGED"
+            ],
+            audio_unknown_intervals=sum(
+                event.event == "AUDIO_OBSERVATION_QUALITY" and event.fields.get("known") == "false"
+                for event in session_events
+            ),
+            mismatch_samples=numeric(finish, "telecom_hfp_mismatch_samples"),
             route_changes=len(route_events),
             route_oscillations=route_oscillations,
             audio_confirmation_losses=audio_confirmation_losses,
@@ -391,6 +403,8 @@ def render_text(summaries: list[SessionSummary], warnings: list[str], out: TextI
               f"max timer lateness: {item.max_timer_late_ms} ms", file=out)
         print(f"  external request actions: {json.dumps(item.external_request_actions, sort_keys=True)}; "
               f"protected with unknown user intent={item.unattributed_protected_requests}", file=out)
+        print(f"  audio health: {','.join(item.audio_health_transitions) or 'not recorded'}; "
+              f"unknown intervals={item.audio_unknown_intervals}; mismatch samples={item.mismatch_samples}", file=out)
         print(f"  Telecom endpoint: {'confirmed' if item.endpoint_confirmed else 'not confirmed'}"
               + (f" at {item.endpoint_latency_ms} ms" if item.endpoint_latency_ms is not None else ""), file=out)
         print(f"  timing: dispatch lateness={item.max_timer_dispatch_late_ms} ms; "

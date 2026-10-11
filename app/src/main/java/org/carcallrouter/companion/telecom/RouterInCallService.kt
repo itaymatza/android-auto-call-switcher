@@ -81,6 +81,11 @@ class RouterInCallService :
     private var lastCallObservationAt: Long? = null
     private var observationMaxGapMs = 0L
     private var userReportedWrongAudio = false
+    private var lastAudioHealth: String? = null
+    private var audioHealthSince = 0L
+    private var mismatchSamples = 0
+    private var firstMismatchAfterAnswerMs: Long? = null
+    private var lastAudioEvidenceKnown: Boolean? = null
 
     private data class Record(
         val id: Int,
@@ -247,6 +252,7 @@ class RouterInCallService :
         lastCallObservationAt = null
         observationMaxGapMs = 0
         userReportedWrongAudio = false
+        resetAudioHealth()
         policy = RoutingPolicy()
         sessionStarted = false
         manualSession = false
@@ -547,8 +553,11 @@ class RouterInCallService :
                     "call_removed",
                     "final_route" to currentRoute(),
                     "endpoint_revision" to router.endpointRevision(),
-                    "target_hfp_connected" to (address != null && hfp.known && address in hfp.connected),
-                    "target_sco" to (address != null && hfp.known && address in hfp.audioConnected),
+                    "target_hfp_connected" to if (hfp.known) address?.let { it in hfp.connected } else null,
+                    "target_sco" to if (hfp.known && hfp.audioConnected.size <= 1) address?.let { it in hfp.audioConnected } else null,
+                    "last_sampled_audio_health" to lastAudioHealth,
+                    "telecom_hfp_mismatch_samples" to mismatchSamples,
+                    "first_mismatch_after_answer_ms" to firstMismatchAfterAnswerMs,
                     "post_confirmation_loss_observed" to postConfirmationLossObserved,
                     "observation_incomplete" to postConfirmationObservationIncomplete,
                     "max_observation_gap_ms" to observationMaxGapMs,
@@ -579,6 +588,7 @@ class RouterInCallService :
             lastCallObservationAt = null
             observationMaxGapMs = 0
             userReportedWrongAudio = false
+            resetAudioHealth()
             manualSession = false
             manualCooldownUntil = 0L
             activeTransitionAt = null
@@ -805,6 +815,57 @@ class RouterInCallService :
             }
         }
         queueEvaluation()
+    }
+
+    private fun resetAudioHealth() {
+        lastAudioHealth = null
+        audioHealthSince = 0L
+        mismatchSamples = 0
+        firstMismatchAfterAnswerMs = null
+        lastAudioEvidenceKnown = null
+    }
+
+    private fun recordAudioHealth(
+        now: Long,
+        route: RoutingPolicy.Route,
+        targetAudio: Boolean?,
+        sampledAt: Long,
+        targetAddress: String?,
+        competitorAddress: String?,
+    ) {
+        val owner = hfpAudioOwner(targetAddress, competitorAddress)
+        val health =
+            when {
+                hfp.audioConnected.size > 1 -> "AMBIGUOUS_HFP_OWNERS"
+                hfp.audioConnected.isEmpty() -> "NO_SCO_OBSERVED"
+                route == RoutingPolicy.Route.TARGET && targetAudio == false -> "TELECOM_HFP_MISMATCH"
+                targetAudio == true && route == RoutingPolicy.Route.TARGET -> "TARGET_SIGNALS_AGREE"
+                targetAudio == true -> "TARGET_SCO_ENDPOINT_DIFFERS"
+                else -> "OTHER_DEVICE_AUDIO"
+            }
+        if (health == "TELECOM_HFP_MISMATCH") {
+            mismatchSamples++
+            if (firstMismatchAfterAnswerMs == null) {
+                firstMismatchAfterAnswerMs = activeTransitionAt?.let { (sampledAt - it).coerceAtLeast(0) }
+            }
+        }
+        if (health != lastAudioHealth) {
+            trace.event(
+                "AUDIO_ROUTE_HEALTH_CHANGED",
+                "health" to health,
+                "previous_health" to lastAudioHealth,
+                "previous_sampled_span_ms" to lastAudioHealth?.let { (sampledAt - audioHealthSince).coerceAtLeast(0) },
+                "telecom_route" to route,
+                "target_sco" to targetAudio,
+                "hfp_audio_owner" to owner,
+                "hfp_audio_device" to hfp.audioConnected.singleOrNull()?.let(RouterLog::deviceId),
+                "sample_age_ms" to (now - sampledAt).coerceAtLeast(0),
+                "mismatch_samples" to mismatchSamples,
+                "observation_mode" to "SAMPLED_NOT_CONTINUOUS",
+            )
+            audioHealthSince = sampledAt
+            lastAudioHealth = health
+        }
     }
 
     private fun guardHasActed(): Boolean =
@@ -1157,6 +1218,17 @@ class RouterInCallService :
             }
         if (active && projection == true && hfpStarted) {
             val sampledAt = hfp.sampledAt
+            val evidenceKnown = hfp.known && hfpFresh
+            if (lastAudioEvidenceKnown != evidenceKnown) {
+                lastAudioEvidenceKnown = evidenceKnown
+                trace.event(
+                    "AUDIO_OBSERVATION_QUALITY",
+                    "known" to evidenceKnown,
+                    "sample_age_ms" to sampledAt?.let { (now - it).coerceAtLeast(0) },
+                    "last_observation_age_ms" to lastCallObservationAt?.let { (now - it).coerceAtLeast(0) },
+                    *hfp.diagnosticFields(),
+                )
+            }
             if (hfp.known && hfpFresh && sampledAt != null && sampledAt != lastCallObservationAt) {
                 val gap = lastCallObservationAt?.let { sampledAt - it } ?: activeTransitionAt?.let { sampledAt - it } ?: 0
                 observationMaxGapMs = maxOf(observationMaxGapMs, gap)
@@ -1165,6 +1237,7 @@ class RouterInCallService :
                     trace.event("CALL_OBSERVATION_GAP", "gap_ms" to gap)
                 }
                 lastCallObservationAt = sampledAt
+                recordAudioHealth(now, route, targetHfpAudio, sampledAt, address, competitorAddress)
                 trace.event(
                     "CALL_AUDIO_OBSERVATION",
                     "target_sco" to targetHfpAudio,
@@ -1185,7 +1258,7 @@ class RouterInCallService :
                 trace.event("POST_CONFIRMATION_WATCH_STARTED", "duration_ms" to POST_CONFIRMATION_WATCH_MS)
             }
             val prior = confirmedAudioPresent
-            if (prior != null && prior != targetHfpAudio) {
+            if (prior != null && targetHfpAudio != null && prior != targetHfpAudio) {
                 trace.event(
                     "CONFIRMED_AUDIO_CHANGED",
                     "target_sco" to targetHfpAudio,
@@ -1194,7 +1267,8 @@ class RouterInCallService :
                     "previous_target_sco" to prior,
                 )
             }
-            confirmedAudioPresent = targetHfpAudio
+            // Unknown evidence is a visibility gap, not an observed audio loss.
+            if (targetHfpAudio != null) confirmedAudioPresent = targetHfpAudio
             if (targetHfpAudio == null && lastCallObservationAt?.let { now - it > CALL_OBSERVATION_MAX_GAP_MS } != false) {
                 postConfirmationObservationIncomplete = true
             }
@@ -1347,6 +1421,11 @@ class RouterInCallService :
                             "generation" to ticket.generation,
                             "endpoint_revision" to router.endpointRevision(),
                             "pre_route" to currentRoute(),
+                            "pre_hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
+                            "pre_hfp_audio_device" to hfp.audioConnected.singleOrNull()?.let(RouterLog::deviceId),
+                            "pre_hfp_sample_age_ms" to hfp.sampledAt?.let { (now - it).coerceAtLeast(0) },
+                            "pre_target_sco" to targetHfpAudio,
+                            "manual" to manualSession,
                         )
                     },
                     accepted = { ticket ->
@@ -1376,6 +1455,9 @@ class RouterInCallService :
                             "request" to ticket.id,
                             "generation" to ticket.generation,
                             "latency_ms" to latency,
+                            "observed_route" to currentRoute(),
+                            "observed_hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
+                            "audio_confirmation" to "PENDING_FRESH_SAMPLES",
                         )
                         queueEvaluation()
                     },

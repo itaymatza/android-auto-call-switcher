@@ -25,7 +25,14 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.19
+## What changed in beta.20
+
+- Adds `AUDIO_ROUTE_HEALTH_CHANGED` for target signal agreement, Telecom/HFP disagreement, missing SCO, ambiguous owners and other-device audio. These are sampled platform observations, not physical speaker or microphone proof.
+- Records the first mismatch after answer, distinct mismatch samples, state spans between sampled transitions, and evidence freshness changes. Unknown intervals remain visible separately.
+- Captures pre-request Bluetooth ownership and acceptance state; keeps unknown final SCO/connection evidence nullable.
+- Stops interpreting a temporary unknown sample as confirmed audio loss, including analysis of older exports.
+
+## Earlier beta.19 behavior
 
 - Collects pre-answer evidence without issuing a route request; the single automatic request starts only after ACTIVE and the startup quiet window. This avoids the pre-answer request collision observed in beta.18.
 - Logs external-request protection decisions, with requester and user intent explicitly unknown. Protected handset, speaker, wired and third-device choices remain respected.

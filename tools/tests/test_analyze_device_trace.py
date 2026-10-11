@@ -22,6 +22,21 @@ def line(session, seq, elapsed, event, fields=""):
 
 
 class TraceAnalyzerTest(unittest.TestCase):
+    def test_unknown_samples_do_not_count_as_audio_losses(self):
+        events, _ = trace.parse_lines(
+            (line("abc", 1, 0, "SESSION_STARTED", "mode=automatic")
+             + line("abc", 2, 1, "CONFIRMED_AUDIO_CHANGED", "target_sco=null")
+             + line("abc", 3, 2, "AUDIO_OBSERVATION_QUALITY", "known=false")
+             + line("abc", 4, 3, "AUDIO_ROUTE_HEALTH_CHANGED", "health=TELECOM_HFP_MISMATCH")
+             + line("abc", 5, 4, "SESSION_FINISHED", "telecom_hfp_mismatch_samples=7"))
+            .splitlines()
+        )
+        summary = trace.summarize(events)[0]
+        self.assertEqual(summary.audio_confirmation_losses, 0)
+        self.assertEqual(summary.audio_unknown_intervals, 1)
+        self.assertEqual(summary.audio_health_transitions, ["TELECOM_HFP_MISMATCH"])
+        self.assertEqual(summary.mismatch_samples, 7)
+
     def test_external_request_decisions_preserve_attribution_uncertainty(self):
         content = (
             line("abc", 1, 0, "SESSION_STARTED")

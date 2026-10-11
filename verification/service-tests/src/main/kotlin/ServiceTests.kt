@@ -147,6 +147,55 @@ private fun countEquals(
 fun main(args: Array<String>) {
     val tests =
         listOf<Pair<String, () -> Unit>>(
+            "audio_health_distinguishes_endpoint_mismatch_from_missing_and_ambiguous_sco" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.route(target)
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    f.targetAudio(false)
+                    check(RouterLog.events.any { "health=TELECOM_HFP_MISMATCH" in it.second })
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    f.targetAudio(true)
+                    check(RouterLog.events.any { "health=TARGET_SIGNALS_AGREE" in it.second })
+                    f.route(competing)
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    check(RouterLog.events.any { "health=TARGET_SCO_ENDPOINT_DIFFERS" in it.second })
+                    HfpMonitor.audioDevices = emptySet()
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    check(RouterLog.events.any { "health=NO_SCO_OBSERVED" in it.second })
+                    HfpMonitor.audioDevices = setOf(TARGET, COMPETING)
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    check(RouterLog.events.any { "health=AMBIGUOUS_HFP_OWNERS" in it.second })
+                    HfpMonitor.audioDevices = setOf(COMPETING)
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    check(RouterLog.events.any { "health=OTHER_DEVICE_AUDIO" in it.second })
+                }
+            },
+            "unknown_audio_evidence_is_not_logged_as_confirmed_audio_loss" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.route(target)
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(TestQueue.now + 300)
+                    HfpMonitor.isKnown = false
+                    HfpMonitor.emit(HfpMonitor.devices)
+                    f.flush()
+                    check(RouterLog.events.any { "event=AUDIO_OBSERVATION_QUALITY" in it.second && "known=false" in it.second })
+                    check(RouterLog.events.none { "event=CONFIRMED_AUDIO_CHANGED" in it.second && "target_sco=null" in it.second })
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterLog.events.any { "event=SESSION_FINISHED" in it.second && "target_sco=null" in it.second })
+                }
+            },
             "service_loss_replaces_previous_success_with_incomplete_observation" to {
                 Fixture().use { f ->
                     RouterSettings(f.service).recordLastSession("RELEASED", "TARGET_AUDIO_CONFIRMED", "TARGET_HFP_AUDIO")

@@ -133,7 +133,7 @@ object RouterLog {
         writer: java.io.Writer,
         settings: RouterSettings,
     ) {
-        writer.append("\nDIAGNOSTIC_COVERAGE schema=3\n")
+        writer.append("\nDIAGNOSTIC_COVERAGE schema=4\n")
         writer.append(
             "Export-time configuration: enabled=${settings.enabled}; " +
                 "target=${deviceId(settings.targetAddress)}; competitor=${deviceId(settings.competitorAddress)}\n",
@@ -143,6 +143,7 @@ object RouterLog {
         writer.append(
             "External request handling: EXTERNAL_REQUEST_DECISION records the protection rule and action; user intent is UNVERIFIED.\n",
         )
+        writer.append("Audio health: AUDIO_ROUTE_HEALTH_CHANGED describes sampled signal agreement/mismatch; AUDIO_OBSERVATION_QUALITY describes visibility gaps. State spans are sampled, not continuous physical audio.\n")
         writer.append("Question: who owns audio before answer? Evidence: CALL_BOUNDARY_SNAPSHOT, HFP_STATE, AUDIO_DEVICE_INVENTORY.\n")
         writer.append(
             "Question: where is routing latency? Evidence: call-boundary elapsed times, ROUTE_REQUEST, HFP_QUERY_TIMING, ROUTING_TRACE.\n",
