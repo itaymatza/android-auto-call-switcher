@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0-beta.20
+
+- Emit unique normalized trace fields so call-boundary events remain parseable; recover identical duplicate fields in legacy exports while rejecting conflicts.
+- Add sampled audio-health transitions, distinct Telecom/HFP mismatch counts and first mismatch timing after answer.
+- Record evidence-quality changes and pre-request Bluetooth ownership alongside request acceptance.
+- Preserve unknown final Bluetooth evidence as unknown instead of disconnected; do not count unknown samples as confirmed audio loss.
+- Extend deterministic service and analyzer regressions. Physical microphone/speaker behavior remains subject to car testing.
+
 ## 0.3.0-beta.18
 
 - Clear endpoint objects between calls and invalidate old request results when an explicit manual transaction starts.

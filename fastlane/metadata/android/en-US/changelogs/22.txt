@@ -1,0 +1,2 @@
+Version 0.3.0-beta.20
+Adds sampled audio-health transitions, Bluetooth/Telecom mismatch timing and evidence freshness diagnostics. Preserves unknown final evidence and distinguishes visibility gaps from observed audio loss.
