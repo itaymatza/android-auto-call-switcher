@@ -1,0 +1,2 @@
+Version 0.3.0-beta.19
+Avoid pre-answer routing collisions; route once after answer. Improve audio sampling, recover observation after temporary authorization uncertainty, distinguish unattributed requests from proven user intent, retain more diagnostics and correct brief-gap reporting. Physical Samsung/car qualification remains required.

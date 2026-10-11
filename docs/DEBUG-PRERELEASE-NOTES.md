@@ -25,7 +25,17 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.18
+## What changed in beta.19
+
+- Collects pre-answer evidence without issuing a route request; the single automatic request starts only after ACTIVE and the startup quiet window. This avoids the pre-answer request collision observed in beta.18.
+- Logs external-request protection decisions, with requester and user intent explicitly unknown. Protected handset, speaker, wired and third-device choices remain respected.
+- Samples active-call HFP evidence every 500 ms, below the independent 750 ms freshness limits, and keeps the read-only timer alive across temporary authorization uncertainty.
+- Marks whole-call observation incomplete for long gaps or unresolved final evidence; a brief unknown sample that recovers does not permanently contaminate the result.
+- Retains up to approximately 24 MB of chronological diagnostics, exports rotation/write-failure limits, and coalesces log UI notifications.
+- Adds service regressions for repeated startup requests with and without a configured competitor, long dialing, pre-answer protected choices, absent SCO, short/long observation gaps and pending authorization.
+- Telecom acceptance still does not prove microphone/speaker routing. Samsung and car qualification remain required.
+
+## Earlier beta.18 behavior
 
 - Clear endpoint objects between calls and invalidate old request results when an explicit manual transaction starts.
 - Preserve unfinished dialing requests through temporary evidence loss at answer; block overlapping Route now attempts.

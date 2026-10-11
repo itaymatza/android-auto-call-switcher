@@ -72,6 +72,7 @@ private class Fixture(
     initialState: Int = Call.STATE_RINGING,
     initialEndpoint: CallEndpoint = competing,
     available: List<CallEndpoint> = listOf(target, competing, other),
+    configureCompetitor: Boolean = true,
 ) : AutoCloseable {
     val service: RouterInCallService
     val call: Call
@@ -81,7 +82,7 @@ private class Fixture(
         ProjectionMonitor.current = projected
         RouterSettings(Context()).apply {
             setTarget(TARGET, "Target test device")
-            setCompetitor(COMPETING, "Competing test device")
+            if (configureCompetitor) setCompetitor(COMPETING, "Competing test device")
             this.enabled = enabled
         }
         service = RouterInCallService()
@@ -201,16 +202,16 @@ fun main(args: Array<String>) {
                 }
             },
             "third_bluetooth_selection_during_dialing_survives_answer" to {
-                Fixture(initialState = Call.STATE_DIALING).use { f ->
-                    TestQueue.advanceTo(500)
-                    f.targetAudio(true)
-                    TestQueue.advanceTo(800)
-                    f.route(other)
-                    HfpMonitor.audioDevices = setOf(OTHER)
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(1400)
-                    countEquals(f, 1)
-                    check("USER_OVERRIDE" in SessionBridge.status)
+                listOf(true, false).forEach { configureCompetitor ->
+                    Fixture(initialState = Call.STATE_DIALING, configureCompetitor = configureCompetitor).use { f ->
+                        TestQueue.advanceTo(500)
+                        f.route(other)
+                        HfpMonitor.audioDevices = setOf(OTHER)
+                        f.activateWithoutSettling()
+                        TestQueue.advanceTo(1400)
+                        countEquals(f, 0)
+                        check("USER_OVERRIDE" in SessionBridge.status)
+                    }
                 }
             },
             "explicit_protected_request_before_initial_routing_is_respected" to {
@@ -221,7 +222,7 @@ fun main(args: Array<String>) {
                         f.flush()
                         TestQueue.advanceTo(1000)
                         countEquals(f, 0)
-                        check("USER_OVERRIDE" in SessionBridge.status)
+                        check("EXTERNAL_ENDPOINT_REQUEST" in SessionBridge.status)
                     }
                 }
             },
@@ -240,10 +241,10 @@ fun main(args: Array<String>) {
                     countEquals(f, 1)
                 }
             },
-            "dialing_boundary_is_captured_with_early_routing" to {
+            "dialing_boundary_is_captured_without_early_routing" to {
                 Fixture(initialState = Call.STATE_DIALING).use { f ->
                     TestQueue.advanceTo(500)
-                    countEquals(f, 1)
+                    countEquals(f, 0)
                     check(RouterLog.events.any { it.first == "CALL_BOUNDARY_SNAPSHOT" && "state=DIALING" in it.second })
                     check(RouterLog.events.any { "bluetoothPriority=UNAVAILABLE_PUBLIC_API" in it.second })
                 }
@@ -254,7 +255,7 @@ fun main(args: Array<String>) {
                     f.call.deliverState(Call.STATE_ACTIVE)
                     f.call.deliverState(Call.STATE_DISCONNECTED)
                     f.flush()
-                    countEquals(f, 1)
+                    countEquals(f, 0)
                     check(
                         RouterLog.events.any {
                             it.first == "CALL_BOUNDARY_SNAPSHOT" && "state=ACTIVE" in it.second && "sinceAddedMs=700" in it.second
@@ -1443,67 +1444,72 @@ fun main(args: Array<String>) {
                     check("EVIDENCE_DEADLINE_EXPIRED" in SessionBridge.status)
                 }
             },
-            "early_routing_then_answer_keeps_one_request_if_audio_stays_bmw" to {
-                Fixture(initialState = Call.STATE_DIALING).use { f ->
-                    TestQueue.advanceTo(500)
-                    countEquals(f, 1)
-                    f.targetAudio(true)
-                    TestQueue.advanceTo(800)
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(1200)
-                    TestQueue.advanceTo(1500)
-                    countEquals(f, 1)
-                    check(SessionBridge.status.contains("Selected device confirmed=true"))
+            "startup_bluetooth_requests_during_dialing_cannot_cancel_answer_routing" to {
+                listOf(true, false).forEach { configureCompetitor ->
+                    Fixture(initialState = Call.STATE_DIALING, configureCompetitor = configureCompetitor).use { f ->
+                        listOf(18L, 469L, 1259L).forEach { at ->
+                            TestQueue.advanceTo(at)
+                            f.service.onCallEndpointRequested(competing)
+                            f.flush()
+                            countEquals(f, 0)
+                        }
+                        TestQueue.advanceTo(1370)
+                        f.activateWithoutSettling()
+                        TestQueue.advanceTo(1387)
+                        f.service.onCallEndpointRequested(competing)
+                        f.flush()
+                        TestQueue.advanceTo(1736)
+                        countEquals(f, 0)
+                        TestQueue.advanceTo(1900)
+                        countEquals(f, 1)
+                        f.targetAudio(true)
+                        TestQueue.advanceTo(2200)
+                        check("Selected device confirmed=true" in SessionBridge.status)
+                        check(RouterLog.events.none { "event=SESSION_SUSPENDED" in it.second })
+                        check(
+                            RouterLog.events.any {
+                                "event=EXTERNAL_REQUEST_DECISION" in it.second && "user_intent=UNVERIFIED" in it.second
+                            },
+                        )
+                    }
                 }
             },
-            "answer_during_pending_dialing_request_does_not_replace_it" to {
+            "long_dialing_does_not_exhaust_answer_evidence_window" to {
                 Fixture(initialState = Call.STATE_DIALING).use { f ->
-                    TestQueue.advanceTo(500)
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(900)
+                    repeat(40) { TestQueue.advanceTo(TestQueue.now + 500) }
+                    countEquals(f, 0)
+                    check("WAITING_CALL_ANSWER" in SessionBridge.status)
+                    f.activateAndSettle()
                     countEquals(f, 1)
                     f.targetAudio(true)
-                    TestQueue.advanceTo(1200)
-                    check(SessionBridge.status.contains("Selected device confirmed=true"))
+                    TestQueue.advanceTo(21000)
+                    check("Selected device confirmed=true" in SessionBridge.status)
                 }
             },
-            "long_dialing_timeout_then_answer_has_a_separate_bounded_pass" to {
-                Fixture(initialState = Call.STATE_DIALING).use { f ->
+            "protected_request_during_dialing_prevents_answer_takeover" to {
+                listOf(true, false).forEach { configureCompetitor ->
+                    listOf(speaker, handset, wired, other).forEach { selected ->
+                        Fixture(initialState = Call.STATE_DIALING, configureCompetitor = configureCompetitor).use { f ->
+                            TestQueue.advanceTo(500)
+                            f.service.onCallEndpointRequested(selected)
+                            f.flush()
+                            f.activateAndSettle()
+                            countEquals(f, 0)
+                            check("reason=EXTERNAL_ENDPOINT_REQUEST" in SessionBridge.status)
+                        }
+                    }
+                }
+            },
+            "outgoing_answer_acceptance_without_sco_has_no_automatic_retry" to {
+                Fixture(initialState = Call.STATE_DIALING, initialEndpoint = target, configureCompetitor = false).use { f ->
                     TestQueue.advanceTo(500)
-                    TestQueue.advanceTo(5000)
+                    countEquals(f, 0)
+                    f.activateAndSettle()
                     countEquals(f, 1)
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(5500)
-                    countEquals(f, 2)
-                    f.targetAudio(true)
-                    TestQueue.advanceTo(5800)
-                    repeat(20) { TestQueue.advanceTo(TestQueue.now + 250) }
-                    countEquals(f, 2)
-                }
-            },
-            "answer_time_takeover_after_dialing_confirmation_has_one_recovery" to {
-                Fixture(initialState = Call.STATE_DIALING).use { f ->
-                    TestQueue.advanceTo(500)
-                    f.targetAudio(true)
-                    TestQueue.advanceTo(800)
-                    // No explicit external request: simulate platform answer-time ownership.
-                    HfpMonitor.audioDevices = setOf(COMPETING)
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(1300)
-                    countEquals(f, 2)
-                    repeat(25) { TestQueue.advanceTo(TestQueue.now + 250) }
-                    countEquals(f, 2)
-                }
-            },
-            "explicit_external_choice_during_dialing_prevents_answer_reassertion" to {
-                Fixture(initialState = Call.STATE_DIALING).use { f ->
-                    TestQueue.advanceTo(500)
-                    f.service.onCallEndpointRequested(competing)
-                    f.flush()
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(2000)
+                    repeat(40) { TestQueue.advanceTo(TestQueue.now + 250) }
                     countEquals(f, 1)
-                    check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
+                    check("TARGET_AUDIO_NOT_CONFIRMED" in SessionBridge.status)
+                    check(!SessionBridge.status.contains("Selected device confirmed=true"))
                 }
             },
             "answered_call_manual_route_before_settling_is_preserved" to {
@@ -1536,7 +1542,7 @@ fun main(args: Array<String>) {
                     f.route(speaker)
                     f.activateWithoutSettling()
                     TestQueue.advanceTo(2000)
-                    countEquals(f, 1)
+                    countEquals(f, 0)
                     check(SessionBridge.status.contains("reason=USER_OVERRIDE"))
                 }
             },
@@ -1547,7 +1553,7 @@ fun main(args: Array<String>) {
                     f.service.onCallRemoved(f.call)
                     f.flush()
                     TestQueue.advanceTo(2000)
-                    countEquals(f, 1)
+                    countEquals(f, 0)
                     check(RouterLog.events.any { "event=CALL_DURATION_SUMMARY" in it.second && "connected_duration_ms=null" in it.second })
                 }
             },
@@ -1577,7 +1583,7 @@ fun main(args: Array<String>) {
                     f.activateAndSettle()
                     f.targetAudio(true)
                     repeat(240) { TestQueue.advanceTo(TestQueue.now + 250) }
-                    check(HfpMonitor.refreshes in 30..80)
+                    check(HfpMonitor.refreshes in 110..180)
                     ProjectionMonitor.emit(false)
                     f.flush()
                     val before = HfpMonitor.refreshes
@@ -1604,18 +1610,68 @@ fun main(args: Array<String>) {
             "request_events_include_answer_relative_and_dialing_relative_timing" to {
                 Fixture(initialState = Call.STATE_DIALING).use { f ->
                     TestQueue.advanceTo(500)
+                    countEquals(f, 0)
+                    f.activateAndSettle()
                     check(
                         RouterLog.events.any {
                             "event=REQUEST_SUBMITTED" in it.second &&
-                                "stage=DIALING" in it.second &&
-                                "since_dialing_ms=500" in it.second &&
-                                "since_answer_ms=null" in it.second
+                                "stage=ANSWERED" in it.second &&
+                                "since_dialing_ms=" in it.second &&
+                                "since_answer_ms=" in it.second &&
+                                "since_answer_ms=null" !in it.second
                         },
                     )
-                    f.activateWithoutSettling()
                     f.service.onCallEndpointRequested(target)
                     f.flush()
-                    check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "since_answer_ms=0" in it.second })
+                    check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "request_source=UNKNOWN" in it.second })
+                }
+            },
+            "brief_unknown_sample_does_not_poison_whole_call_confirmation" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(1000)
+                    HfpMonitor.emit(HfpMonitor.devices, known = false)
+                    f.flush()
+                    TestQueue.advanceTo(1250)
+                    HfpMonitor.emit(HfpMonitor.devices, known = true)
+                    f.flush()
+                    TestQueue.advanceTo(2000)
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.HFP_CONFIRMED)
+                }
+            },
+            "long_unknown_sample_marks_call_observation_incomplete" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    TestQueue.advanceTo(1000)
+                    HfpMonitor.emit(HfpMonitor.devices, known = false)
+                    f.flush()
+                    repeat(20) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    HfpMonitor.emit(HfpMonitor.devices, known = true)
+                    f.flush()
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                    check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.INCOMPLETE)
+                }
+            },
+            "observation_polling_recovers_after_pending_authorization" to {
+                Fixture().use { f ->
+                    f.activateAndSettle()
+                    f.targetAudio(true)
+                    repeat(40) { TestQueue.advanceTo(TestQueue.now + 250) }
+                    Access.queryDelayMs = 1
+                    val before = HfpMonitor.refreshes
+                    TestQueue.advanceTo(TestQueue.now + 500)
+                    check(HfpMonitor.refreshes > before)
+                    Access.queryDelayMs = 0
+                    TestQueue.advanceTo(TestQueue.now + 500)
+                    check("Selected device confirmed=true" in SessionBridge.status)
+                    countEquals(f, 1)
                 }
             },
             "pending_call_safety_waits_then_routes_after_completion" to {

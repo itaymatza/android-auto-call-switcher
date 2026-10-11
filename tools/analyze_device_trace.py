@@ -41,6 +41,8 @@ class SessionSummary:
     self_callbacks: int
     startup_replays: int
     external_callbacks: int
+    external_request_actions: dict[str, int]
+    unattributed_protected_requests: int
     route_changes: int
     route_oscillations: int
     audio_confirmation_losses: int
@@ -300,6 +302,18 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             self_callbacks=classifications.count("SELF"),
             startup_replays=classifications.count("STARTUP_REPLAY"),
             external_callbacks=classifications.count("EXTERNAL"),
+            external_request_actions={
+                action: sum(event.fields.get("action") == action for event in session_events
+                            if event.event == "EXTERNAL_REQUEST_DECISION")
+                for action in sorted({event.fields.get("action", "unknown") for event in session_events
+                                      if event.event == "EXTERNAL_REQUEST_DECISION"})
+            },
+            unattributed_protected_requests=sum(
+                event.event == "EXTERNAL_REQUEST_DECISION"
+                and event.fields.get("action") == "PROTECT_POSSIBLE_MANUAL_CHOICE"
+                and event.fields.get("user_intent") == "UNVERIFIED"
+                for event in session_events
+            ),
             route_changes=len(route_events),
             route_oscillations=route_oscillations,
             audio_confirmation_losses=audio_confirmation_losses,
@@ -375,6 +389,8 @@ def render_text(summaries: list[SessionSummary], warnings: list[str], out: TextI
         print(f"  route changes/oscillations: {item.route_changes}/{item.route_oscillations}; "
               f"audio losses after confirmation: {item.audio_confirmation_losses}; "
               f"max timer lateness: {item.max_timer_late_ms} ms", file=out)
+        print(f"  external request actions: {json.dumps(item.external_request_actions, sort_keys=True)}; "
+              f"protected with unknown user intent={item.unattributed_protected_requests}", file=out)
         print(f"  Telecom endpoint: {'confirmed' if item.endpoint_confirmed else 'not confirmed'}"
               + (f" at {item.endpoint_latency_ms} ms" if item.endpoint_latency_ms is not None else ""), file=out)
         print(f"  timing: dispatch lateness={item.max_timer_dispatch_late_ms} ms; "

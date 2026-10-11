@@ -143,3 +143,20 @@ A repeated same-endpoint request is not advertised as physical audio recovery.
 - Local APK compilation could not resolve uncached Android Gradle plugin 8.13.2.
   Android build, Android unit tests, lint, CodeQL and signed APK verification remain
   pending repository CI. No APK or real-device qualification is claimed.
+
+
+## Beta.19 response to observed startup collisions
+
+The shipping service now uses read-only dialing warm-up and routes only after ACTIVE.
+Repeated unattributed Bluetooth requests during the beta.18 dialing transaction
+suspended automation before answer. The public API cannot identify the originating
+service or prove user intent, so the service avoids competing during that phase
+rather than discarding possible manual choices. Speaker, handset, wired and resolved
+third-device choices remain protected before answer. One automatic target request
+is allowed per call; explicit Route now remains a user-controlled separate transaction.
+The earlier two-stage pure-policy tests remain research/prototype coverage, not the
+shipping service's routing default. Read-only call observation is every 500 ms, with
+independent freshness checks and a 3-second gap budget.
+
+API contract: https://developer.android.com/reference/android/telecom/InCallService#onCallEndpointRequested(android.telecom.CallEndpoint)
+The callback supplies the requested endpoint, not caller identity or final success.
