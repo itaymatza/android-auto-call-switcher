@@ -202,16 +202,16 @@ fun main(args: Array<String>) {
                 }
             },
             "third_bluetooth_selection_during_dialing_survives_answer" to {
-                Fixture(initialState = Call.STATE_DIALING).use { f ->
-                    TestQueue.advanceTo(500)
-                    f.targetAudio(true)
-                    TestQueue.advanceTo(800)
-                    f.route(other)
-                    HfpMonitor.audioDevices = setOf(OTHER)
-                    f.activateWithoutSettling()
-                    TestQueue.advanceTo(1400)
-                    countEquals(f, 0)
-                    check("USER_OVERRIDE" in SessionBridge.status)
+                listOf(true, false).forEach { configureCompetitor ->
+                    Fixture(initialState = Call.STATE_DIALING, configureCompetitor = configureCompetitor).use { f ->
+                        TestQueue.advanceTo(500)
+                        f.route(other)
+                        HfpMonitor.audioDevices = setOf(OTHER)
+                        f.activateWithoutSettling()
+                        TestQueue.advanceTo(1400)
+                        countEquals(f, 0)
+                        check("USER_OVERRIDE" in SessionBridge.status)
+                    }
                 }
             },
             "explicit_protected_request_before_initial_routing_is_respected" to {
@@ -1487,14 +1487,16 @@ fun main(args: Array<String>) {
                 }
             },
             "protected_request_during_dialing_prevents_answer_takeover" to {
-                listOf(speaker, handset, wired, other).forEach { selected ->
-                    Fixture(initialState = Call.STATE_DIALING).use { f ->
-                        TestQueue.advanceTo(500)
-                        f.service.onCallEndpointRequested(selected)
-                        f.flush()
-                        f.activateAndSettle()
-                        countEquals(f, 0)
-                        check("reason=EXTERNAL_ENDPOINT_REQUEST" in SessionBridge.status)
+                listOf(true, false).forEach { configureCompetitor ->
+                    listOf(speaker, handset, wired, other).forEach { selected ->
+                        Fixture(initialState = Call.STATE_DIALING, configureCompetitor = configureCompetitor).use { f ->
+                            TestQueue.advanceTo(500)
+                            f.service.onCallEndpointRequested(selected)
+                            f.flush()
+                            f.activateAndSettle()
+                            countEquals(f, 0)
+                            check("reason=EXTERNAL_ENDPOINT_REQUEST" in SessionBridge.status)
+                        }
                     }
                 }
             },

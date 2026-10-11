@@ -642,7 +642,10 @@ class RouterInCallService :
                 previousId != null &&
                 previousId != lastEndpointId &&
                 targetEndpoint().endpoint != null &&
-                (settings.competitorAddress != null || policy.requests > 0 || previousRoute == RoutingPolicy.Route.TARGET)
+                (
+                    outgoingDialingPhase || settings.competitorAddress != null ||
+                        policy.requests > 0 || previousRoute == RoutingPolicy.Route.TARGET
+                )
         if (
             sessionStarted &&
             !manualSession &&
@@ -758,7 +761,12 @@ class RouterInCallService :
                             !matchesTarget &&
                             endpointId != competitorEndpoint().endpoint?.identifier?.toString()
                     )
-            val protect = protectedRequest || (outgoingDialingPhase && totalAutomaticRequests > 0 && !matchesTarget)
+            // A different pre-answer Bluetooth choice is also protected when no competing
+            // device was configured. Same-current startup requests remain observational.
+            val distinctPreAnswerBluetoothRequest =
+                outgoingDialingPhase && callEndpoint.endpointType == CallEndpoint.TYPE_BLUETOOTH &&
+                    router.current() != null && !matchesCurrent && !matchesTarget
+            val protect = protectedRequest || distinctPreAnswerBluetoothRequest
             trace.event(
                 "EXTERNAL_REQUEST_DECISION",
                 "type" to callEndpoint.endpointType,
@@ -767,6 +775,7 @@ class RouterInCallService :
                 "user_intent" to "UNVERIFIED",
                 "action" to if (protect) "PROTECT_POSSIBLE_MANUAL_CHOICE" else "OBSERVE_WITHOUT_REASSERTION",
                 "protected_type_or_device" to protectedRequest,
+                "distinct_pre_answer_bluetooth" to distinctPreAnswerBluetoothRequest,
                 "pre_answer" to outgoingDialingPhase,
                 "automatic_requests" to totalAutomaticRequests,
                 "matches_current" to matchesCurrent,
