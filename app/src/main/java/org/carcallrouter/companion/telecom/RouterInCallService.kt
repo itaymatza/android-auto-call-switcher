@@ -476,7 +476,7 @@ class RouterInCallService :
             // Invalidate dialing callbacks before resetting its request counter at answer.
             if (!policy.hasUnfinishedRequest) router.clearSession()
             policy.answer(requireNotNull(activeTransitionAt), currentRoute())
-            trace.event("ANSWER_VERIFICATION_STARTED", "prior_requests" to totalAutomaticRequests)
+            trace.event("ANSWER_VERIFICATION_STARTED", "prior_requests" to totalAutomaticRequests, "routing_trigger" to "ANSWER_ONLY")
             hfp.refresh("answer_verification")
         }
         if (!sessionStarted && state == Call.STATE_ACTIVE) {
@@ -518,7 +518,7 @@ class RouterInCallService :
         manualSession = false
         outgoingDialingPhase = true
         policy.begin(SystemClock.elapsedRealtime(), currentRoute())
-        trace.event("DIALING_ROUTING_STARTED", "call" to record.id)
+        trace.event("DIALING_OBSERVATION_STARTED", "call" to record.id, "routing_deferred_until" to "ACTIVE")
     }
 
     override fun onCallRemoved(call: Call) {
@@ -533,7 +533,7 @@ class RouterInCallService :
         if (records.isEmpty()) {
             cancelTick("call_removed")
             finishPostConfirmationWatch("call_removed")
-            if (lastCallObservationAt == null) postConfirmationObservationIncomplete = true
+            if (lastCallObservationAt == null || !hfp.known) postConfirmationObservationIncomplete = true
             lastCallObservationAt?.let {
                 val gap = SystemClock.elapsedRealtime() - it
                 observationMaxGapMs = maxOf(observationMaxGapMs, gap)
@@ -758,10 +758,25 @@ class RouterInCallService :
                             !matchesTarget &&
                             endpointId != competitorEndpoint().endpoint?.identifier?.toString()
                     )
-            if (protectedRequest || (outgoingDialingPhase && totalAutomaticRequests > 0 && !matchesTarget)) {
+            val protect = protectedRequest || (outgoingDialingPhase && totalAutomaticRequests > 0 && !matchesTarget)
+            trace.event(
+                "EXTERNAL_REQUEST_DECISION",
+                "type" to callEndpoint.endpointType,
+                "id" to RouterLog.deviceId(endpointId),
+                "request_source" to "UNKNOWN",
+                "user_intent" to "UNVERIFIED",
+                "action" to if (protect) "PROTECT_POSSIBLE_MANUAL_CHOICE" else "OBSERVE_WITHOUT_REASSERTION",
+                "protected_type_or_device" to protectedRequest,
+                "pre_answer" to outgoingDialingPhase,
+                "automatic_requests" to totalAutomaticRequests,
+                "matches_current" to matchesCurrent,
+                "matches_target" to matchesTarget,
+                "endpoint_revision" to router.endpointRevision(),
+            )
+            if (protect) {
                 suspendSessionFromEvent(
-                    "External protected route request; automatic takeover suppressed",
-                    RoutingPolicy.ReasonCode.USER_OVERRIDE,
+                    "Unattributed protected route request; respecting possible manual choice",
+                    RoutingPolicy.ReasonCode.EXTERNAL_ENDPOINT_REQUEST,
                 )
             }
             policy.observeStartupActivity(now)
@@ -828,11 +843,23 @@ class RouterInCallService :
     private fun currentRoute(): RoutingPolicy.Route {
         val current = router.current() ?: return RoutingPolicy.Route.UNKNOWN
         return when (current.endpointType) {
-            CallEndpoint.TYPE_SPEAKER -> RoutingPolicy.Route.SPEAKER
-            CallEndpoint.TYPE_EARPIECE -> RoutingPolicy.Route.HANDSET
-            CallEndpoint.TYPE_WIRED_HEADSET -> RoutingPolicy.Route.WIRED
-            CallEndpoint.TYPE_STREAMING -> RoutingPolicy.Route.STREAMING
-            CallEndpoint.TYPE_BLUETOOTH ->
+            CallEndpoint.TYPE_SPEAKER -> {
+                RoutingPolicy.Route.SPEAKER
+            }
+
+            CallEndpoint.TYPE_EARPIECE -> {
+                RoutingPolicy.Route.HANDSET
+            }
+
+            CallEndpoint.TYPE_WIRED_HEADSET -> {
+                RoutingPolicy.Route.WIRED
+            }
+
+            CallEndpoint.TYPE_STREAMING -> {
+                RoutingPolicy.Route.STREAMING
+            }
+
+            CallEndpoint.TYPE_BLUETOOTH -> {
                 when {
                     !hfp.known -> RoutingPolicy.Route.UNKNOWN
                     router.isCurrent(targetEndpoint().endpoint) -> RoutingPolicy.Route.TARGET
@@ -840,7 +867,11 @@ class RouterInCallService :
                     !hfp.labelsKnown -> RoutingPolicy.Route.UNKNOWN
                     else -> RoutingPolicy.Route.OTHER_BLUETOOTH
                 }
-            else -> RoutingPolicy.Route.UNKNOWN
+            }
+
+            else -> {
+                RoutingPolicy.Route.UNKNOWN
+            }
         }
     }
 
@@ -1039,6 +1070,7 @@ class RouterInCallService :
                     lateBindRecoveryDeadlineAt = null
                     policy.begin(now, route)
                 }
+
                 userOwnedRoute || projection == false -> {
                     lateBindRecoveryDeadlineAt = null
                     policy.suspend(
@@ -1047,12 +1079,14 @@ class RouterInCallService :
                     )
                     trace.event("SESSION_SUSPENDED", "reason" to policy.reasonCode, "route" to route)
                 }
+
                 prerequisitesReady && carOwnedRoute -> {
                     lateBindRecoveryDeadlineAt = null
                     policy.begin(now, route)
                     trace.event("LATE_BIND_RECOVERY_STARTED", "initial_route" to route)
                     RouterLog.event("LATE_BIND_RECOVERY_STARTED", "Verified Android Auto/car route; automatic startup guard enabled")
                 }
+
                 now >= lateBindDeadline -> {
                     lateBindRecoveryDeadlineAt = null
                     policy.suspend(
@@ -1061,6 +1095,7 @@ class RouterInCallService :
                     )
                     trace.event("SESSION_SUSPENDED", "reason" to policy.reasonCode, "route" to route)
                 }
+
                 else -> {
                     val state =
                         "Service: bound\n" +
@@ -1083,34 +1118,29 @@ class RouterInCallService :
             }
         }
         val decision =
-            policy.evaluate(
-                RoutingPolicy.Snapshot(
-                    now = now,
-                    enabled = settings.enabled,
-                    authorized = authorized,
-                    active =
-                        active ||
-                            (
-                                outgoingDialingPhase &&
-                                    live.singleOrNull()?.details?.state in
-                                    setOf(
-                                        Call.STATE_DIALING,
-                                        Call.STATE_CONNECTING,
-                                    )
-                            ),
-                    singleCall = live.size == 1 && records.size == 1,
-                    safeCellularCall = safe,
-                    callSafetyPending = safetyPending,
-                    projection = projection,
-                    targetHfpConnected = hfpConnected,
-                    targetHfpAudio = targetHfpAudio,
-                    targetHfpSampleAt = hfp.sampledAt,
-                    selectorRecoveryAvailable = if (outgoingDialingPhase) false else selectorRecoveryAvailable,
-                    targetAvailable = endpointAvailable,
-                    endpointRevision = router.endpointRevision(),
-                    route = route,
-                ),
-            )
+            if (outgoingDialingPhase && !active) {
+                policy.awaitAnswer()
+            } else {
+                policy.evaluate(
+                    RoutingPolicy.Snapshot(
+                        now = now,
+                        enabled = settings.enabled,
+                        authorized = authorized,
+                        active = active,
+                        singleCall = live.size == 1 && records.size == 1,
+                        safeCellularCall = safe,
+                        callSafetyPending = safetyPending,
+                        projection = projection,
+                        targetHfpConnected = hfpConnected,
+                        targetHfpAudio = targetHfpAudio,
+                        targetHfpSampleAt = hfp.sampledAt,
+                        selectorRecoveryAvailable = if (outgoingDialingPhase) false else selectorRecoveryAvailable,
+                        targetAvailable = endpointAvailable,
+                        endpointRevision = router.endpointRevision(),
+                        route = route,
+                    ),
+                )
+            }
         if (active && projection == true && hfpStarted) {
             val sampledAt = hfp.sampledAt
             if (hfp.known && hfpFresh && sampledAt != null && sampledAt != lastCallObservationAt) {
@@ -1127,7 +1157,11 @@ class RouterInCallService :
                     "audio_owner" to hfpAudioOwner(address, competitorAddress),
                     "mode" to "SAMPLED_NOT_CONTINUOUS",
                 )
-            } else if (!hfp.known) {
+            } else if (!hfp.known &&
+                now - (lastCallObservationAt ?: activeTransitionAt ?: now) > CALL_OBSERVATION_MAX_GAP_MS
+            ) {
+                // A pending refresh may briefly make evidence unknown. Only a real gap beyond
+                // the observation budget makes the whole-call summary incomplete.
                 postConfirmationObservationIncomplete = true
             }
         }
@@ -1235,30 +1269,36 @@ class RouterInCallService :
                 "attempts" to policy.requests,
             )
             when (policy.reasonCode) {
-                RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_CONFIRMED ->
+                RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_CONFIRMED -> {
                     trace.event(
                         "SELECTOR_RECOVERY_CONFIRMED",
                         "route" to route,
                         "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
                         "target_sco" to targetHfpAudio,
                     )
+                }
+
                 RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED,
                 RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_FAILED,
-                ->
+                -> {
                     trace.event(
                         "SELECTOR_RECOVERY_TERMINATED",
                         "reason" to policy.reasonCode,
                         "route" to route,
                         "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
                     )
-                else -> Unit
+                }
+
+                else -> {
+                    Unit
+                }
             }
         }
         if (trace.isActive() && policy.phase == RoutingPolicy.Phase.FAILED && policyState != previousPolicyForIncident) {
             trace.event("DIAGNOSTIC_INCIDENT", "trigger" to policy.reasonCode, "route" to route, "hfp_fresh" to hfpFresh)
         }
         previousPolicyForIncident = policyState
-        if (decision.requestTarget && target.endpoint != null && (manualSession || totalAutomaticRequests < 2)) {
+        if (decision.requestTarget && target.endpoint != null && (manualSession || totalAutomaticRequests < 1)) {
             if (!manualSession) totalAutomaticRequests++
             val attempt = requireNotNull(decision.requestAttempt)
             val targetId = RouterLog.deviceId(address)
@@ -1530,7 +1570,10 @@ class RouterInCallService :
                 }
             }
         }
-        if (active && projection == true && hfpStarted && runtimeGranted && authorized == true) {
+        if ((active || outgoingDialingPhase) && projection == true && hfpStarted && runtimeGranted) {
+            // Observation must keep running across a pending/expired authorization sample.
+            // This timer only refreshes evidence; policy still requires fresh authorization
+            // and call-safety checks before any request.
             val desired = now + CALL_OBSERVATION_POLL_MS
             if (scheduledTickAt == null || requireNotNull(scheduledTickAt) > desired) scheduleTick(desired, "CALL_OBSERVATION_POLL")
         }
@@ -1656,7 +1699,7 @@ class RouterInCallService :
     }
 
     companion object {
-        private const val CALL_OBSERVATION_POLL_MS = 2_000L
+        private const val CALL_OBSERVATION_POLL_MS = 500L
         private const val CALL_OBSERVATION_MAX_GAP_MS = 3_000L
         private const val HFP_VERIFY_POLL_MS = 250L
         private const val POST_CONFIRMATION_WATCH_MS = 3_000L

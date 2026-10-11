@@ -10,6 +10,7 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** No numbers, call handles, account IDs, device names or raw addresses are logged. */
@@ -19,6 +20,8 @@ object RouterLog {
     private val listeners = linkedSetOf<() -> Unit>()
     private val recent = java.util.ArrayDeque<String>()
     private val processSequence = AtomicLong()
+    private val fileWriteFailures = AtomicLong()
+    private val notificationPending = AtomicBoolean()
     private val processId =
         UUID
             .randomUUID()
@@ -56,15 +59,26 @@ object RouterLog {
         }
         io.execute {
             try {
-                if (file.length() > 1_000_000) {
+                if (file.length() > MAX_FILE_BYTES) {
                     rotateFiles()
                 }
                 file.appendText(line + "\n")
             } catch (_: Exception) {
+                fileWriteFailures.incrementAndGet()
                 Log.w("CallRouteCompanion", "Diagnostic file write failed")
             }
         }
-        main.post { listeners.toList().forEach { it() } }
+        // Coalesce a burst of diagnostics into one UI refresh. Routing callbacks must not
+        // sit behind hundreds of redraw notifications when detailed sampling is enabled.
+        if (notificationPending.compareAndSet(false, true)) {
+            if (!main.post {
+                    notificationPending.set(false)
+                    listeners.toList().forEach { it() }
+                }
+            ) {
+                notificationPending.set(false)
+            }
+        }
     }
 
     @Synchronized fun recentText(): String = recent.joinToString("\n")
@@ -95,6 +109,11 @@ object RouterLog {
                                 "Android ${android.os.Build.VERSION.RELEASE}; security patch ${android.os.Build.VERSION.SECURITY_PATCH}",
                         )
                         writer.appendLine("Device addresses are salted aliases. No phone numbers are recorded.")
+                        writer.appendLine(
+                            "LOG_RETENTION max_file_bytes=$MAX_FILE_BYTES; max_archives=$MAX_ARCHIVES; " +
+                                "file_write_failures_current_process=${fileWriteFailures.get()}; " +
+                                "rotation_may_truncate_sessions=true",
+                        )
                         appendInvestigationGuide(writer, RouterSettings(context))
                         (MAX_ARCHIVES downTo 1).forEach { index ->
                             val archive = archive(index)
@@ -114,12 +133,16 @@ object RouterLog {
         writer: java.io.Writer,
         settings: RouterSettings,
     ) {
-        writer.append("\nDIAGNOSTIC_COVERAGE schema=2\n")
+        writer.append("\nDIAGNOSTIC_COVERAGE schema=3\n")
         writer.append(
             "Export-time configuration: enabled=${settings.enabled}; " +
                 "target=${deviceId(settings.targetAddress)}; competitor=${deviceId(settings.competitorAddress)}\n",
         )
         writer.append("These settings describe export time; use CALL_BOUNDARY_SNAPSHOT for call-time configuration.\n")
+        writer.append("Automatic routing waits for ACTIVE; DIALING_OBSERVATION_STARTED records read-only pre-answer warm-up.\n")
+        writer.append(
+            "External request handling: EXTERNAL_REQUEST_DECISION records the protection rule and action; user intent is UNVERIFIED.\n",
+        )
         writer.append("Question: who owns audio before answer? Evidence: CALL_BOUNDARY_SNAPSHOT, HFP_STATE, AUDIO_DEVICE_INVENTORY.\n")
         writer.append(
             "Question: where is routing latency? Evidence: call-boundary elapsed times, ROUTE_REQUEST, HFP_QUERY_TIMING, ROUTING_TRACE.\n",
@@ -168,5 +191,6 @@ object RouterLog {
 
     private fun archive(index: Int) = File(file.parentFile, "router.$index.log")
 
-    private const val MAX_ARCHIVES = 3
+    private const val MAX_FILE_BYTES = 4_000_000L
+    private const val MAX_ARCHIVES = 5
 }

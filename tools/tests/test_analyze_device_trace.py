@@ -22,6 +22,23 @@ def line(session, seq, elapsed, event, fields=""):
 
 
 class TraceAnalyzerTest(unittest.TestCase):
+    def test_external_request_decisions_preserve_attribution_uncertainty(self):
+        content = (
+            line("abc", 1, 0, "SESSION_STARTED")
+            + line("abc", 2, 100, "EXTERNAL_REQUEST_DECISION",
+                   "action=OBSERVE_WITHOUT_REASSERTION request_source=UNKNOWN user_intent=UNVERIFIED")
+            + line("abc", 3, 200, "EXTERNAL_REQUEST_DECISION",
+                   "action=PROTECT_POSSIBLE_MANUAL_CHOICE request_source=UNKNOWN user_intent=UNVERIFIED")
+        )
+        summaries, warnings = self.parse(content)
+        self.assertEqual([], warnings)
+        self.assertEqual({"OBSERVE_WITHOUT_REASSERTION": 1, "PROTECT_POSSIBLE_MANUAL_CHOICE": 1},
+                         summaries[0].external_request_actions)
+        self.assertEqual(1, summaries[0].unattributed_protected_requests)
+        older, _ = self.parse(line("old", 1, 0, "SESSION_STARTED"))
+        self.assertEqual({}, older[0].external_request_actions)
+        self.assertEqual(0, older[0].unattributed_protected_requests)
+
     def parse(self, content):
         events, warnings = trace.parse_lines(io.StringIO(content))
         return trace.summarize(events), warnings

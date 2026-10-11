@@ -25,6 +25,7 @@ class RoutingPolicy(
     enum class ReasonCode {
         NO_SESSION,
         WAITING_PREREQUISITES,
+        WAITING_CALL_ANSWER,
         SETTLING_AFTER_ACTIVE,
         EXTERNAL_SUSPEND,
         SETTINGS_CHANGED,
@@ -186,6 +187,15 @@ class RoutingPolicy(
         begin(now, initial)
     }
 
+    /** Pre-answer observations warm evidence but must never compete with call-start routing. */
+    fun awaitAnswer(): Decision {
+        if (phase in terminalPhases) return Decision()
+        phase = Phase.WAITING
+        reason = "Waiting for answer; collecting call-start evidence without changing audio"
+        reasonCode = ReasonCode.WAITING_CALL_ANSWER
+        return Decision()
+    }
+
     fun suspend(
         reason: String,
         code: ReasonCode = ReasonCode.EXTERNAL_SUSPEND,
@@ -250,15 +260,21 @@ class RoutingPolicy(
                 reason = "Telecom request timed out; awaiting selected device HFP audio without retrying"
                 reasonCode = ReasonCode.REQUEST_TIMED_OUT
             }
-            RequestError.ENDPOINT_GONE ->
+
+            RequestError.ENDPOINT_GONE -> {
                 fail("Selected device endpoint disappeared during the one-shot request", ReasonCode.REQUEST_ENDPOINT_GONE)
-            RequestError.CANCELLED_BY_OTHER ->
+            }
+
+            RequestError.CANCELLED_BY_OTHER -> {
                 suspend(
                     "Another endpoint request replaced the one-shot request; automation stopped",
                     ReasonCode.REQUEST_CANCELLED_BY_OTHER,
                 )
-            RequestError.UNSPECIFIED, RequestError.RUNTIME_EXCEPTION ->
+            }
+
+            RequestError.UNSPECIFIED, RequestError.RUNTIME_EXCEPTION -> {
                 fail("Telecom rejected the one-shot routing request", ReasonCode.REQUEST_FAILED)
+            }
         }
     }
 

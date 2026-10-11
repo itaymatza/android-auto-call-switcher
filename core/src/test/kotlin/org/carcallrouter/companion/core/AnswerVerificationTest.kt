@@ -6,6 +6,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AnswerVerificationTest {
+    @Test
+    fun preAnswerWarmupWaitsAndCannotReviveProtectedSuspension() {
+        val p = RoutingPolicy()
+        p.begin(0, RoutingPolicy.Route.COMPETING_DEVICE)
+        repeat(30) {
+            assertFalse(p.awaitAnswer().requestTarget)
+            assertEquals(0, p.requests)
+            assertEquals(RoutingPolicy.ReasonCode.WAITING_CALL_ANSWER, p.reasonCode)
+        }
+        p.answer(20_000, RoutingPolicy.Route.COMPETING_DEVICE)
+        assertTrue(p.evaluate(snapshot(20_300)).requestTarget)
+        p.suspend("unattributed protected request", RoutingPolicy.ReasonCode.EXTERNAL_ENDPOINT_REQUEST)
+        assertFalse(p.awaitAnswer().requestTarget)
+        p.answer(21_000, RoutingPolicy.Route.COMPETING_DEVICE)
+        assertFalse(p.evaluate(snapshot(21_500)).requestTarget)
+        assertEquals(RoutingPolicy.ReasonCode.EXTERNAL_ENDPOINT_REQUEST, p.reasonCode)
+    }
+
     private fun snapshot(
         now: Long,
         audio: Boolean = false,
