@@ -840,6 +840,7 @@ class RouterInCallService :
                 hfp.audioConnected.isEmpty() -> "NO_SCO_OBSERVED"
                 route == RoutingPolicy.Route.TARGET && targetAudio == false -> "TELECOM_HFP_MISMATCH"
                 targetAudio == true && route == RoutingPolicy.Route.TARGET -> "TARGET_SIGNALS_AGREE"
+                targetAudio == true && route == RoutingPolicy.Route.UNKNOWN -> "TARGET_SCO_ENDPOINT_UNRESOLVED"
                 targetAudio == true -> "TARGET_SCO_ENDPOINT_DIFFERS"
                 else -> "OTHER_DEVICE_AUDIO"
             }

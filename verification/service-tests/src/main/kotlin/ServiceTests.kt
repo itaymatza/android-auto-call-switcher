@@ -177,6 +177,11 @@ fun main(args: Array<String>) {
                     HfpMonitor.emit(HfpMonitor.devices)
                     f.flush()
                     check(RouterLog.events.any { "health=OTHER_DEVICE_AUDIO" in it.second })
+                    f.endpoints(emptyList())
+                    HfpMonitor.labels = emptyMap()
+                    TestQueue.advanceTo(TestQueue.now + 1)
+                    f.targetAudio(true)
+                    check(RouterLog.events.any { "health=TARGET_SCO_ENDPOINT_UNRESOLVED" in it.second })
                 }
             },
             "unknown_audio_evidence_is_not_logged_as_confirmed_audio_loss" to {
@@ -185,8 +190,7 @@ fun main(args: Array<String>) {
                     f.route(target)
                     f.targetAudio(true)
                     TestQueue.advanceTo(TestQueue.now + 300)
-                    HfpMonitor.isKnown = false
-                    HfpMonitor.emit(HfpMonitor.devices)
+                    HfpMonitor.emit(HfpMonitor.devices, known = false)
                     f.flush()
                     check(RouterLog.events.any { "event=AUDIO_OBSERVATION_QUALITY" in it.second && "known=false" in it.second })
                     check(RouterLog.events.none { "event=CONFIRMED_AUDIO_CHANGED" in it.second && "target_sco=null" in it.second })
