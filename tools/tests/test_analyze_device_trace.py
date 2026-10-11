@@ -22,6 +22,15 @@ def line(session, seq, elapsed, event, fields=""):
 
 
 class TraceAnalyzerTest(unittest.TestCase):
+    def test_legacy_identical_context_fields_are_recovered_but_conflicts_rejected(self):
+        events, warnings = trace.parse_lines([
+            line("abc", 1, 0, "CALL_STATE_CHANGED", "call=1 call=1 physical_audio_verified=false physical_audio_verified=false"),
+            line("abc", 2, 1, "CALL_STATE_CHANGED", "call=1 call=2"),
+        ])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].fields["call"], "1")
+        self.assertEqual(len(warnings), 1)
+
     def test_unknown_samples_do_not_count_as_audio_losses(self):
         events, _ = trace.parse_lines(
             (line("abc", 1, 0, "SESSION_STARTED", "mode=automatic")

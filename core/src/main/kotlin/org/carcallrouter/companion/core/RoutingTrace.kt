@@ -48,7 +48,12 @@ class RoutingTrace(
                 add("seq=${++sequence}")
                 add("elapsed_ms=$elapsed")
                 add("event=${token(name)}")
-                (context().toList() + fields).forEach { (key, value) -> add("${token(key)}=${token(value?.toString() ?: "null")}") }
+                // Boundary events repeat call/timeline fields already present in context.
+                // Emit one normalized key so strict analyzers do not discard those events.
+                (context().toList() + fields)
+                    .associate { (key, value) -> token(key) to token(value?.toString() ?: "null") }
+                    .filterKeys { it !in setOf("schema", "session", "seq", "elapsed_ms", "event") }
+                    .forEach { (key, value) -> add("$key=$value") }
             }.joinToString(" ")
         emit(body)
         eventCounts[name] = (eventCounts[name] ?: 0) + 1

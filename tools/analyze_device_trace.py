@@ -99,7 +99,9 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[TraceEvent], list[str]]:
                 malformed = True
                 continue
             key, value = token.split("=", 1)
-            if not key or key in values:
+            # Older exports repeat identical call/timeline fields from event context.
+            # Recover those records, but never choose between conflicting values.
+            if not key or (key in values and values[key] != value):
                 malformed = True
                 continue
             values[key] = value

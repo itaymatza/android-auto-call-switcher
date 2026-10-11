@@ -27,6 +27,7 @@ to the workflow and source commit that produced it.
 
 ## What changed in beta.20
 
+- Fixes duplicate trace fields that caused strict analysis to discard call-boundary events; the analyzer also recovers identical duplicates from older exports.
 - Adds `AUDIO_ROUTE_HEALTH_CHANGED` for target signal agreement, Telecom/HFP disagreement, missing SCO, ambiguous owners and other-device audio. These are sampled platform observations, not physical speaker or microphone proof.
 - Records the first mismatch after answer, distinct mismatch samples, state spans between sampled transitions, and evidence freshness changes. Unknown intervals remain visible separately.
 - Captures pre-request Bluetooth ownership and acceptance state; keeps unknown final SCO/connection evidence nullable.
