@@ -54,7 +54,7 @@ class RoutingFreshnessTest {
         val p = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
         assertFalse(p.evaluate(snapshot(0, 0, audio = false, projection = false)).requestTarget)
         assertTrue(p.phase == Phase.WAITING)
-        assertTrue(p.evaluate(snapshot(500, 500, audio = false)).requestTarget)
+        assertTrue(p.evaluate(snapshot(500, 500, audio = false).copy(route = Route.COMPETING_DEVICE)).requestTarget)
         p.evaluate(snapshot(600, 600, audio = false, projection = false))
         assertTrue(p.phase == Phase.SUSPENDED)
         assertFalse(p.evaluate(snapshot(700, 700, audio = false)).requestTarget)

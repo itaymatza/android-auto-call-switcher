@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0-beta.21
+
+- Reconcile a pre-existing displayed-endpoint/HFP-owner mismatch before one target request, avoiding same-endpoint no-ops and automatic retries.
+- Resolve the sole observed audio owner from fresh unique live evidence when no competitor is configured; refuse ambiguity.
+- Use typed commands and one production policy contract; require strictly newer HFP evidence before advancing reconciliation.
+- Sample manual reconciliation without projection and block overlapping manual commands.
+- Show a separate current audio assessment and preserve physical-audio complaints and known failures through pause, disconnect and service teardown.
+- Bound diagnostic write queues and reject silent qualification when exported logs report data loss.
+- Centralize session finalization; add 192 independent transport combinations and adversarial timing, lifecycle and status tests. Physical speaker/microphone qualification remains required.
+
 ## 0.3.0-beta.20
 
 - Emit unique normalized trace fields so call-boundary events remain parseable; recover identical duplicate fields in legacy exports while rejecting conflicts.

@@ -25,19 +25,14 @@ class RoutingScenarioTest {
     }
 
     @Test
-    fun capturedSamsungSplitBrainForcesExactlyOneBmwRequest() {
+    fun capturedDisplayedTargetMismatchDoesNotSubmitAnIdempotentTargetRequest() {
         val policy = RoutingPolicy(settleDelayMs = 500).also { it.begin(0, Route.TARGET) }
-
-        assertFalse(
-            policy.evaluate(snapshot(7, route = Route.TARGET, targetHfpAudio = false)).requestTarget,
-        )
-        policy.observeRoute(Route.OTHER_BLUETOOTH, 7)
-        val request = policy.evaluate(snapshot(500, route = Route.TARGET, targetHfpAudio = false))
-
-        assertTrue(request.requestTarget)
-        assertEquals(1, request.requestAttempt)
-        assertEquals(1, policy.requests)
-        assertFalse(policy.evaluate(snapshot(3_000, route = Route.TARGET, targetHfpAudio = false)).requestTarget)
+        for (now in listOf(7L, 500L, 3000L)) {
+            assertEquals(null, policy.evaluate(snapshot(now, route = Route.TARGET)).command)
+        }
+        assertEquals(0, policy.requests)
+        assertFalse(policy.verified)
+        assertEquals(RoutingPolicy.ReasonCode.WAITING_RECONCILIATION_EVIDENCE, policy.reasonCode)
     }
 
     @Test
@@ -103,14 +98,14 @@ class RoutingScenarioTest {
     fun otherServiceRequestStopsSelectorRecoveryButNotAudioConfirmation() {
         val policy = RoutingPolicy().also { it.begin(0, Route.TARGET) }
         assertFalse(policy.observeExternalRequestAfterTarget())
-        policy.evaluate(snapshot(300, route = Route.TARGET))
+        policy.evaluate(snapshot(300))
         assertTrue(policy.observeExternalRequestAfterTarget())
         policy.evaluate(snapshot(4_300, route = Route.TARGET, selectorRecoveryAvailable = true))
         assertEquals(RoutingPolicy.ReasonCode.EXTERNAL_ENDPOINT_REQUEST, policy.reasonCode)
         assertEquals(0, policy.selectorRecoveries)
 
         val audio = RoutingPolicy().also { it.begin(0, Route.TARGET) }
-        audio.evaluate(snapshot(300, route = Route.TARGET))
+        audio.evaluate(snapshot(300))
         audio.observeExternalRequestAfterTarget()
         audio.evaluate(snapshot(700, route = Route.TARGET, targetHfpAudio = true))
         audio.evaluate(snapshot(950, route = Route.TARGET, targetHfpAudio = true))

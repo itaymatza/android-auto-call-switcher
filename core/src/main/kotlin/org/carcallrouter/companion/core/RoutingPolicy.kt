@@ -1,17 +1,20 @@
 package org.carcallrouter.companion.core
 
 /**
- * A bounded, one-shot call-routing transaction.
+ * A bounded call-routing transaction.
  *
  * Android Auto is allowed to finish its call-start routing, one selected device request is made, and success
- * is based on target HFP audio rather than Telecom's displayed endpoint. A failed split-brain
- * transaction may restore the already-active Android Auto endpoint once for manual selection.
+ * is based on target HFP audio rather than Telecom's displayed endpoint. A pre-existing mismatch
+ * is reconciled with the sole stable audio owner BEFORE the single target request.
+ * Maximum: one reconciliation and one target request. Failed requests are never retried.
  */
 class RoutingPolicy(
     private val evidenceWindowMs: Long = 10_000,
     private val settleDelayMs: Long = 300,
     private val actionWindowMs: Long = 4_000,
     private val platformRequestTimeoutMs: Long = 1_500,
+    // AOSP allows 2 s for an endpoint change; retain 500 ms for fresh observation/dispatch.
+    private val reconciliationWindowMs: Long = 2_500,
     private val targetAudioStableMs: Long = 250,
     private val startupQuietMs: Long = 350,
     private val startupMaxDelayMs: Long = 900,
@@ -59,11 +62,12 @@ class RoutingPolicy(
         TARGET_AUDIO_CONFIRMING,
         TARGET_AUDIO_CONFIRMED,
         TARGET_AUDIO_NOT_CONFIRMED,
+        WAITING_RECONCILIATION_EVIDENCE,
         SELECTOR_RECOVERY_SUBMITTED,
         SELECTOR_RECOVERY_ACCEPTED,
-        SELECTOR_RECOVERY_CONFIRMED,
         SELECTOR_RECOVERY_NOT_CONFIRMED,
         SELECTOR_RECOVERY_FAILED,
+        RECONCILIATION_OWNER_CHANGED,
         ROUTE_MOVED_AFTER_CONFIRMATION,
         ALTERNATIVE_ROUTE_DURING_REQUEST,
         ALTERNATIVE_ROUTE_DEBOUNCE,
@@ -93,7 +97,7 @@ class RoutingPolicy(
         val targetHfpAudio: Boolean?,
         /** Start timestamp of the HFP query; missing or stale samples cannot authorize routing. */
         val targetHfpSampleAt: Long?,
-        /** True only when the configured competing endpoint currently owns HFP audio. */
+        /** True only when a uniquely resolved non-target endpoint currently owns HFP audio. */
         val selectorRecoveryAvailable: Boolean?,
         /** null means Telecom has not delivered its first endpoint snapshot yet. */
         val targetAvailable: Boolean?,
@@ -101,14 +105,30 @@ class RoutingPolicy(
         val endpointRevision: Long,
         /** Diagnostic only. It is not accepted as proof that call audio reached the target. */
         val route: Route,
+        /** Exact live endpoint of the sole observed non-target HFP audio owner. */
+        val recoveryEndpointKey: String? = null,
+        val recoveryEndpointCurrent: Boolean = false,
     )
 
+    /** A decision can submit at most one command; its destination is fixed by this observation. */
+    sealed interface Command {
+        data class Target(
+            val attempt: Int,
+        ) : Command
+
+        data class Reconcile(
+            val endpointKey: String,
+        ) : Command
+    }
+
     data class Decision(
-        val requestTarget: Boolean = false,
-        val restoreSelector: Boolean = false,
-        val requestAttempt: Int? = null,
+        val command: Command? = null,
         val wakeAt: Long? = null,
-    )
+    ) {
+        val requestTarget: Boolean get() = command is Command.Target
+        val restoreSelector: Boolean get() = command is Command.Reconcile
+        val requestAttempt: Int? = (command as? Command.Target)?.attempt
+    }
 
     var phase = Phase.IDLE
         private set
@@ -125,7 +145,7 @@ class RoutingPolicy(
 
     /** Missing evidence can move a submitted transaction back to WAITING without ending it. */
     val hasUnfinishedRequest: Boolean
-        get() = requests > 0 && phase !in terminalPhases
+        get() = hasActed && phase !in terminalPhases
 
     private var manual = false
     private var evidenceDeadline = 0L
@@ -136,9 +156,28 @@ class RoutingPolicy(
     private var inFlightUntil: Long? = null
     private var targetAudioSince: Long? = null
     private var lastPositiveSampleAt: Long? = null
-    private var selectorRecoveryDeadline: Long? = null
-    private var selectorRecoveryAccepted = false
+
+    private data class Reconciliation(
+        val endpointKey: String,
+        val startedAt: Long,
+        val deadline: Long,
+        val accepted: Boolean = false,
+    )
+
+    private data class OwnerCandidate(
+        val key: String,
+        val since: Long,
+        val sampledAt: Long,
+    )
+
+    private var reconciliation: Reconciliation? = null
+    private var ownerCandidate: OwnerCandidate? = null
     private var externalRequestAfterTarget = false
+
+    val pendingRecoveryEndpointKey: String?
+        get() = reconciliation?.endpointKey.takeIf { phase !in terminalPhases }
+
+    val hasActed: Boolean get() = requests > 0 || selectorRecoveries > 0
 
     fun begin(
         now: Long,
@@ -154,8 +193,8 @@ class RoutingPolicy(
         inFlightUntil = null
         targetAudioSince = null
         lastPositiveSampleAt = null
-        selectorRecoveryDeadline = null
-        selectorRecoveryAccepted = false
+        reconciliation = null
+        ownerCandidate = null
         externalRequestAfterTarget = false
         requests = 0
         selectorRecoveries = 0
@@ -209,8 +248,8 @@ class RoutingPolicy(
 
     /**
      * Route callbacks are intentionally observational. They cannot reliably distinguish Samsung
-     * call-start routing from a deliberate user choice, and this transaction never reasserts after
-     * its single selected device request.
+     * call-start routing from a deliberate user choice. Recovery requires separate, fresh HFP
+     * ownership evidence and is inhibited by external endpoint requests.
      */
     fun observeRoute(
         route: Route,
@@ -222,14 +261,17 @@ class RoutingPolicy(
 
     /** Wait for call-start routing activity to quiet down, but never postpone it indefinitely. */
     fun observeStartupActivity(now: Long) {
-        if (manual || phase != Phase.WAITING || requests != 0 || now < startedAt) return
+        if (manual || phase != Phase.WAITING || hasActed || now < startedAt) return
         settleUntil = minOf(startedAt + startupMaxDelayMs, maxOf(settleUntil, now + startupQuietMs))
     }
 
     /** Another service may control the endpoint. Keep observing audio without fighting it. */
     fun observeExternalRequestAfterTarget(): Boolean {
-        if (requests == 0 || phase !in setOf(Phase.VERIFYING, Phase.STABILIZING)) return false
+        if (!hasActed || phase in terminalPhases) return false
         externalRequestAfterTarget = true
+        if (reconciliation != null) {
+            suspend("Another endpoint request interrupted reconciliation", ReasonCode.EXTERNAL_ENDPOINT_REQUEST)
+        }
         return true
     }
 
@@ -240,7 +282,7 @@ class RoutingPolicy(
         if (inFlightAttempt != attempt || phase in terminalPhases) return
         clearPendingRequest()
         phase = Phase.VERIFYING
-        reason = "Telecom accepted the one-shot request; awaiting selected device HFP audio"
+        reason = "Telecom accepted the target request; awaiting selected device HFP audio"
         reasonCode = ReasonCode.REQUEST_ACCEPTED
         @Suppress("UNUSED_VARIABLE")
         val callbackAt = now
@@ -254,7 +296,7 @@ class RoutingPolicy(
         clearPendingRequest()
         when (error) {
             RequestError.TIMEOUT -> {
-                // A timeout can race the actual Bluetooth transition. Never send another request;
+                // A timeout can race the actual Bluetooth transition. Do not immediately retry;
                 // keep observing target HFP audio until the bounded action deadline.
                 phase = Phase.VERIFYING
                 reason = "Telecom request timed out; awaiting selected device HFP audio without retrying"
@@ -279,16 +321,17 @@ class RoutingPolicy(
     }
 
     fun selectorRecoverySucceeded() {
-        if (phase != Phase.RECOVERING_SELECTOR) return
-        selectorRecoveryAccepted = true
-        reason = "Telecom accepted selector recovery; awaiting Android Auto endpoint display"
+        val pending = reconciliation ?: return
+        if (phase in terminalPhases) return
+        reconciliation = pending.copy(accepted = true)
+        reason = "Telecom accepted reconciliation; awaiting the observed owner endpoint"
         reasonCode = ReasonCode.SELECTOR_RECOVERY_ACCEPTED
     }
 
     fun selectorRecoveryFailed() {
-        if (phase != Phase.RECOVERING_SELECTOR) return
+        if (reconciliation == null || phase in terminalPhases) return
         fail(
-            "Could not restore manual selector for the selected call device after split-brain routing",
+            "Could not reconcile the displayed endpoint with the observed call-audio owner",
             ReasonCode.SELECTOR_RECOVERY_FAILED,
         )
     }
@@ -305,7 +348,7 @@ class RoutingPolicy(
                 return stop("Emergency, non-cellular or unclassified call", ReasonCode.UNSAFE_CALL)
             }
             if (!manual && !s.enabled) return stop("Master toggle is off", ReasonCode.DISABLED)
-            if (requests > 0) return stop("Telecom authorization evidence expired after a request", ReasonCode.AUTHORIZATION_MISSING)
+            if (hasActed) return stop("Telecom authorization evidence expired after a request", ReasonCode.AUTHORIZATION_MISSING)
             val decision = waitFor("Waiting for fresh Telecom authorization evidence", ReasonCode.AUTHORIZATION_UNKNOWN, s.now)
             return decision.copy(wakeAt = decision.wakeAt?.let { minOf(it, s.now + 250) })
         }
@@ -313,7 +356,7 @@ class RoutingPolicy(
             if (!s.singleCall) return stop("Multiple calls / conference: system routing retained", ReasonCode.MULTIPLE_CALLS)
             if (!s.active) return stop("Call is no longer ACTIVE", ReasonCode.CALL_NOT_ACTIVE)
             if (!manual && !s.enabled) return stop("Master toggle is off", ReasonCode.DISABLED)
-            if (requests > 0) return stop("Call-safety evidence changed or expired after a request", ReasonCode.UNSAFE_CALL)
+            if (hasActed) return stop("Call-safety evidence changed or expired after a request", ReasonCode.UNSAFE_CALL)
             val decision = waitFor("Waiting for fresh call-safety evidence", ReasonCode.WAITING_CALL_SAFETY, s.now)
             return decision.copy(wakeAt = decision.wakeAt?.let { minOf(it, s.now + 250) })
         }
@@ -322,46 +365,73 @@ class RoutingPolicy(
         if (!s.active) return stop("Call is no longer ACTIVE", ReasonCode.CALL_NOT_ACTIVE)
         if (!manual && !s.enabled) return stop("Master toggle is off", ReasonCode.DISABLED)
         if (!manual && s.projection == false) {
-            if (requests > 0) return stop("Android Auto projection is not active", ReasonCode.PROJECTION_DISCONNECTED)
+            if (hasActed) return stop("Android Auto projection is not active", ReasonCode.PROJECTION_DISCONNECTED)
             return waitFor("Rechecking Android Auto before the first request", ReasonCode.PROJECTION_DISCONNECTED, s.now)
         }
         if (!manual && s.projection == null) {
             return waitFor("Waiting for Android Auto projection evidence", ReasonCode.PROJECTION_UNKNOWN, s.now)
         }
-        selectorRecoveryDeadline?.let { deadline ->
-            if (s.route == Route.COMPETING_DEVICE) {
-                return fail(
-                    "Android Auto endpoint display restored; manual selection of the preferred device is available",
-                    ReasonCode.SELECTOR_RECOVERY_CONFIRMED,
-                )
+        reconciliation?.let { pending ->
+            if (s.route in protectedUserRoutes && !s.recoveryEndpointCurrent) {
+                return stop("Protected route selected during reconciliation", ReasonCode.USER_OVERRIDE)
             }
-            if (s.route in protectedUserRoutes) {
-                suspend(
-                    "Protected route selected during selector recovery; no further action will be taken",
-                    ReasonCode.USER_OVERRIDE,
-                )
-                return Decision()
+            if (s.selectorRecoveryAvailable == false ||
+                s.targetHfpConnected == false ||
+                s.targetAvailable == false ||
+                (s.recoveryEndpointKey != null && s.recoveryEndpointKey != pending.endpointKey)
+            ) {
+                return fail("Audio owner or endpoint evidence changed during reconciliation", ReasonCode.RECONCILIATION_OWNER_CHANGED)
             }
-            if (s.now >= deadline) {
+            val sampleAt = s.targetHfpSampleAt
+            val fresh = sampleAt != null && s.now - sampleAt in 0..MAX_HFP_SAMPLE_AGE_MS
+            if (s.recoveryEndpointCurrent &&
+                s.recoveryEndpointKey == pending.endpointKey &&
+                s.selectorRecoveryAvailable == true &&
+                s.targetHfpConnected == true &&
+                s.targetAvailable == true &&
+                fresh &&
+                requireNotNull(sampleAt) > pending.startedAt &&
+                s.now < pending.deadline
+            ) {
+                reconciliation = null
+                // The observed endpoint and a strictly newer ownership sample permit the
+                // single target request. An accepted outcome alone cannot advance this.
+                return submitTarget(s.now)
+            }
+            if (s.now >= pending.deadline) {
                 return fail(
-                    if (selectorRecoveryAccepted) {
-                        "Telecom accepted selector recovery but did not display Android Auto"
+                    if (pending.accepted) {
+                        "Telecom accepted reconciliation but the observed owner endpoint was not confirmed"
                     } else {
-                        "Selector recovery timed out before Telecom returned a result"
+                        "Reconciliation timed out before the observed owner endpoint was confirmed"
                     },
                     ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED,
                 )
             }
             phase = Phase.RECOVERING_SELECTOR
-            return Decision(wakeAt = deadline)
+            return Decision(wakeAt = pending.deadline)
         }
         if (s.targetHfpConnected == false) {
-            if (requests > 0) return stop("Selected call device is not connected for HFP", ReasonCode.TARGET_HFP_DISCONNECTED)
+            if (hasActed) return stop("Selected call device is not connected for HFP", ReasonCode.TARGET_HFP_DISCONNECTED)
             return waitFor("Waiting for the selected Bluetooth call device to connect", ReasonCode.WAITING_TARGET_HFP, s.now)
         }
         if (s.targetHfpConnected == null) {
             return waitFor("Waiting for Bluetooth HFP evidence", ReasonCode.TARGET_HFP_UNKNOWN, s.now)
         }
+        val sampleAt = s.targetHfpSampleAt
+        val sampleFresh = sampleAt != null && s.now - sampleAt in 0..MAX_HFP_SAMPLE_AGE_MS
+        val targetAudio = if (sampleFresh) s.targetHfpAudio else null
+        val candidateKey = s.recoveryEndpointKey.takeIf { sampleFresh && targetAudio == false && s.selectorRecoveryAvailable == true }
+        val previousCandidate = ownerCandidate
+        ownerCandidate =
+            candidateKey?.let { key ->
+                val at = requireNotNull(sampleAt)
+                val continuous =
+                    previousCandidate != null &&
+                        previousCandidate.key == key &&
+                        at - previousCandidate.sampledAt in 0..MAX_HFP_SAMPLE_AGE_MS
+                OwnerCandidate(key, if (continuous) requireNotNull(previousCandidate).since else at, at)
+            }
         if (s.now < settleUntil) {
             targetAudioSince = null
             phase = Phase.WAITING
@@ -373,9 +443,6 @@ class RoutingPolicy(
             return fail("Evidence deadline expired before safe routing could start", ReasonCode.EVIDENCE_DEADLINE_EXPIRED)
         }
 
-        val sampleAt = s.targetHfpSampleAt
-        val sampleFresh = sampleAt != null && s.now - sampleAt in 0..MAX_HFP_SAMPLE_AGE_MS
-        val targetAudio = if (sampleFresh) s.targetHfpAudio else null
         if (targetAudio == true) {
             val observedAt = requireNotNull(sampleAt)
             if (observedAt > currentDeadline()) {
@@ -403,7 +470,7 @@ class RoutingPolicy(
             }
             verified = true
             phase = Phase.RELEASED
-            reason = "Selected device HFP audio confirmed; one-shot routing complete"
+            reason = "Selected device HFP audio confirmed; bounded routing complete"
             reasonCode = ReasonCode.TARGET_AUDIO_CONFIRMED
             clearPendingRequest()
             return Decision()
@@ -422,18 +489,27 @@ class RoutingPolicy(
             if (targetAudio == null) {
                 return waitFor("Waiting for current HFP audio ownership", ReasonCode.TARGET_HFP_UNKNOWN, s.now)
             }
-            requests = 1
-            actionDeadline = s.now + actionWindowMs
-            inFlightAttempt = 1
-            inFlightUntil = s.now + platformRequestTimeoutMs
-            phase = Phase.VERIFYING
-            reason = "One-shot selected device request submitted; awaiting HFP audio confirmation"
-            reasonCode = ReasonCode.REQUEST_SUBMITTED
-            return Decision(
-                requestTarget = true,
-                requestAttempt = 1,
-                wakeAt = minOf(currentDeadline(), requireNotNull(inFlightUntil)),
-            )
+            if (s.route == Route.TARGET) {
+                val candidate = ownerCandidate
+                if (candidate == null || candidate.sampledAt - candidate.since < OWNER_STABLE_MS) {
+                    val waiting =
+                        waitFor(
+                            "Displayed endpoint and audio disagree; waiting for a stable, uniquely resolved audio owner",
+                            ReasonCode.WAITING_RECONCILIATION_EVIDENCE,
+                            s.now,
+                        )
+                    return waiting.copy(wakeAt = waiting.wakeAt?.let { minOf(it, s.now + 250) })
+                }
+                check(selectorRecoveries == 0) { "Reconciliation budget exhausted" }
+                selectorRecoveries = 1
+                val pending = Reconciliation(candidate.key, s.now, s.now + reconciliationWindowMs)
+                reconciliation = pending
+                phase = Phase.RECOVERING_SELECTOR
+                reason = "Reconciling the displayed endpoint with the observed audio owner before the single target request"
+                reasonCode = ReasonCode.SELECTOR_RECOVERY_SUBMITTED
+                return Decision(Command.Reconcile(candidate.key), pending.deadline)
+            }
+            return submitTarget(s.now)
         }
 
         inFlightUntil?.let { timeout ->
@@ -445,24 +521,6 @@ class RoutingPolicy(
         }
 
         if (s.now >= currentDeadline()) {
-            if (
-                selectorRecoveries == 0 &&
-                !externalRequestAfterTarget &&
-                s.route == Route.TARGET &&
-                targetAudio == false &&
-                s.selectorRecoveryAvailable == true
-            ) {
-                selectorRecoveries = 1
-                selectorRecoveryDeadline = s.now + platformRequestTimeoutMs
-                selectorRecoveryAccepted = false
-                phase = Phase.RECOVERING_SELECTOR
-                reason = "Selected device display and SCO disagree; restoring Android Auto display for manual selection"
-                reasonCode = ReasonCode.SELECTOR_RECOVERY_SUBMITTED
-                return Decision(
-                    restoreSelector = true,
-                    wakeAt = requireNotNull(selectorRecoveryDeadline),
-                )
-            }
             return fail(
                 if (externalRequestAfterTarget) {
                     "Another endpoint request occurred; selected device audio was not confirmed and no route was restored"
@@ -476,6 +534,18 @@ class RoutingPolicy(
         return Decision(wakeAt = currentDeadline())
     }
 
+    private fun submitTarget(now: Long): Decision {
+        check(requests == 0) { "Target request budget exhausted" }
+        requests++
+        actionDeadline = now + actionWindowMs
+        inFlightAttempt = requests
+        inFlightUntil = now + platformRequestTimeoutMs
+        phase = Phase.VERIFYING
+        reason = "Selected device request submitted; awaiting fresh HFP audio confirmation"
+        reasonCode = ReasonCode.REQUEST_SUBMITTED
+        return Decision(Command.Target(requests), wakeAt = minOf(currentDeadline(), requireNotNull(inFlightUntil)))
+    }
+
     private fun waitFor(
         message: String,
         code: ReasonCode,
@@ -483,6 +553,9 @@ class RoutingPolicy(
     ): Decision {
         val deadline = currentDeadline()
         if (now >= deadline) {
+            if (reconciliation != null) {
+                return fail("Fresh evidence was unavailable before the reconciliation deadline", ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED)
+            }
             val code = if (actionDeadline == null) ReasonCode.EVIDENCE_DEADLINE_EXPIRED else ReasonCode.TARGET_AUDIO_NOT_CONFIRMED
             val failure =
                 if (actionDeadline == null) {
@@ -498,7 +571,7 @@ class RoutingPolicy(
         return Decision(wakeAt = deadline)
     }
 
-    private fun currentDeadline(): Long = actionDeadline ?: evidenceDeadline
+    private fun currentDeadline(): Long = reconciliation?.deadline ?: actionDeadline ?: evidenceDeadline
 
     private fun clearPendingRequest() {
         inFlightAttempt = null
@@ -527,6 +600,7 @@ class RoutingPolicy(
 
     companion object {
         const val MAX_HFP_SAMPLE_AGE_MS = 750L
+        private const val OWNER_STABLE_MS = 500L
         val protectedUserRoutes = setOf(Route.SPEAKER, Route.HANDSET, Route.WIRED, Route.OTHER_BLUETOOTH)
         val terminalPhases = setOf(Phase.IDLE, Phase.RELEASED, Phase.SUSPENDED, Phase.FAILED)
     }

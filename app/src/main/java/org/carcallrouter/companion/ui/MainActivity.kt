@@ -29,6 +29,7 @@ import org.carcallrouter.companion.R
 import org.carcallrouter.companion.RouterLog
 import org.carcallrouter.companion.RouterSettings
 import org.carcallrouter.companion.SessionBridge
+import org.carcallrouter.companion.core.CallAudioStatus
 import org.carcallrouter.companion.telecom.AuthorizationMonitor
 import java.text.DateFormat
 import java.util.Date
@@ -61,6 +62,7 @@ class MainActivity : Activity() {
     private lateinit var advancedContent: View
     private lateinit var diagnosticsToggle: Button
     private lateinit var diagnosticsContent: View
+    private lateinit var callAudioStatus: TextView
     private lateinit var status: TextView
     private lateinit var logs: TextView
 
@@ -200,6 +202,7 @@ class MainActivity : Activity() {
         advancedContent = findViewById(R.id.advanced_content)
         diagnosticsToggle = findViewById(R.id.diagnostics_toggle)
         diagnosticsContent = findViewById(R.id.diagnostics_content)
+        callAudioStatus = findViewById(R.id.call_audio_status)
         status = findViewById(R.id.status)
         logs = findViewById(R.id.logs)
     }
@@ -432,6 +435,18 @@ class MainActivity : Activity() {
             } else {
                 DateFormat.getDateTimeInstance().format(Date(settings.lastBound))
             }
+        callAudioStatus.setText(
+            when (SessionBridge.audioStatus) {
+                CallAudioStatus.NO_CALL -> R.string.audio_no_call
+                CallAudioStatus.WAITING_FOR_ANSWER -> R.string.audio_waiting
+                CallAudioStatus.UNCONFIRMED -> R.string.audio_unconfirmed
+                CallAudioStatus.TARGET_OBSERVED -> R.string.audio_target_observed
+                CallAudioStatus.MISMATCH -> R.string.audio_mismatch
+                CallAudioStatus.OTHER_DEVICE -> R.string.audio_other_device
+                CallAudioStatus.NO_BLUETOOTH_AUDIO -> R.string.audio_no_bluetooth
+                CallAudioStatus.USER_REPORTED_PROBLEM -> R.string.audio_user_problem
+            },
+        )
         status.text = "Version: ${BuildConfig.VERSION_NAME}\n" +
             "Android SDK: ${android.os.Build.VERSION.SDK_INT}\n" +
             "Runtime permissions: ${setup.runtimePermissionsGranted}\n" +

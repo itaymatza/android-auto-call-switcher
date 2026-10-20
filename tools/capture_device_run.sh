@@ -207,10 +207,8 @@ if [[ "$SCENARIO" == "override" ]]; then
     ask_observation user_override_respected "Was the manual route override respected without route fighting?"
 fi
 if [[ "$SCENARIO" == "selector-recovery" ]]; then
-    ask_observation split_brain_seen "Did the Phone app show the preferred call device while call audio was actually on Android Auto?"
-    ask_observation selector_matched_actual_audio "Did the selector return to Android Auto after the bounded recovery?"
-    ask_observation target_became_selectable "Could you then select the preferred call device manually?"
-    ask_observation manual_target_speaker_and_mic "Did that manual preferred-device selection move both speaker and microphone?"
+    ask_observation split_brain_seen "Did the Phone app initially show the preferred call device while call audio was actually on another device?"
+    ask_observation reconciliation_completed_automatically "Did the preferred speaker and microphone become active without a manual route change?"
 fi
 
 PARKED_REPORTS_OK=false

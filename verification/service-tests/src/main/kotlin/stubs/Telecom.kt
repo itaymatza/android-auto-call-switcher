@@ -107,6 +107,7 @@ open class InCallService : Context() {
     val pendingRequests = mutableListOf<PendingRequest>()
     var autoCompleteRequests = true
     var requestException: RuntimeException? = null
+    var onEndpointRequest: ((CallEndpoint) -> Unit)? = null
     var currentCallEndpoint: CallEndpoint = CallEndpoint("Handset", CallEndpoint.TYPE_EARPIECE)
 
     fun requestCallEndpointChange(
@@ -119,6 +120,7 @@ open class InCallService : Context() {
             executor.execute { old.receiver.onError(CallEndpointException(CallEndpointException.ERROR_ANOTHER_REQUEST)) }
         }
         issuedRequests.add(SystemClock.elapsedRealtime() to endpoint.identifier.toString())
+        onEndpointRequest?.invoke(endpoint)
         if (autoCompleteRequests) executor.execute { receiver.onResult(null) } else pendingRequests.add(PendingRequest(endpoint, receiver))
     }
 

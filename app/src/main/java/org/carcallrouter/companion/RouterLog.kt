@@ -5,22 +5,23 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import org.carcallrouter.companion.core.BoundedSerialExecutor
 import java.io.File
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** No numbers, call handles, account IDs, device names or raw addresses are logged. */
 object RouterLog {
-    private val io = Executors.newSingleThreadExecutor()
+    private val io = BoundedSerialExecutor(capacity = 256, threadName = "router-diagnostics")
     private val main = Handler(Looper.getMainLooper())
     private val listeners = linkedSetOf<() -> Unit>()
     private val recent = java.util.ArrayDeque<String>()
     private val processSequence = AtomicLong()
     private val fileWriteFailures = AtomicLong()
+    private val droppedFileWrites = AtomicLong()
     private val notificationPending = AtomicBoolean()
     private val processId =
         UUID
@@ -57,17 +58,19 @@ object RouterLog {
             recent.addLast(line)
             while (recent.size > 250) recent.removeFirst()
         }
-        io.execute {
-            try {
-                if (file.length() > MAX_FILE_BYTES) {
-                    rotateFiles()
+        val queued =
+            io.submit {
+                try {
+                    if (file.length() > MAX_FILE_BYTES) {
+                        rotateFiles()
+                    }
+                    file.appendText(line + "\n")
+                } catch (_: Exception) {
+                    fileWriteFailures.incrementAndGet()
+                    Log.w("CallRouteCompanion", "Diagnostic file write failed")
                 }
-                file.appendText(line + "\n")
-            } catch (_: Exception) {
-                fileWriteFailures.incrementAndGet()
-                Log.w("CallRouteCompanion", "Diagnostic file write failed")
             }
-        }
+        if (!queued) droppedFileWrites.incrementAndGet()
         // Coalesce a burst of diagnostics into one UI refresh. Routing callbacks must not
         // sit behind hundreds of redraw notifications when detailed sampling is enabled.
         if (notificationPending.compareAndSet(false, true)) {
@@ -97,35 +100,38 @@ object RouterLog {
         uri: android.net.Uri,
         done: (Boolean) -> Unit,
     ) {
-        io.execute {
-            val ok =
-                try {
-                    context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
-                        writer.appendLine(
-                            "Android Auto Call Switcher ${BuildConfig.VERSION_NAME}; Android SDK ${android.os.Build.VERSION.SDK_INT}",
-                        )
-                        writer.appendLine(
-                            "Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}; " +
-                                "Android ${android.os.Build.VERSION.RELEASE}; security patch ${android.os.Build.VERSION.SECURITY_PATCH}",
-                        )
-                        writer.appendLine("Device addresses are salted aliases. No phone numbers are recorded.")
-                        writer.appendLine(
-                            "LOG_RETENTION max_file_bytes=$MAX_FILE_BYTES; max_archives=$MAX_ARCHIVES; " +
-                                "file_write_failures_current_process=${fileWriteFailures.get()}; " +
-                                "rotation_may_truncate_sessions=true",
-                        )
-                        appendInvestigationGuide(writer, RouterSettings(context))
-                        (MAX_ARCHIVES downTo 1).forEach { index ->
-                            val archive = archive(index)
-                            if (archive.exists()) writer.append(archive.readText())
-                        }
-                        if (file.exists()) writer.append(file.readText())
-                    } != null
-                } catch (_: Exception) {
-                    false
-                }
-            main.post { done(ok) }
-        }
+        val queued =
+            io.submit {
+                val ok =
+                    try {
+                        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
+                            writer.appendLine(
+                                "Android Auto Call Switcher ${BuildConfig.VERSION_NAME}; Android SDK ${android.os.Build.VERSION.SDK_INT}",
+                            )
+                            writer.appendLine(
+                                "Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}; " +
+                                    "Android ${android.os.Build.VERSION.RELEASE}; security patch ${android.os.Build.VERSION.SECURITY_PATCH}",
+                            )
+                            writer.appendLine("Device addresses are salted aliases. No phone numbers are recorded.")
+                            writer.appendLine(
+                                "LOG_RETENTION max_file_bytes=$MAX_FILE_BYTES; max_archives=$MAX_ARCHIVES; " +
+                                    "file_write_failures_current_process=${fileWriteFailures.get()}; " +
+                                    "dropped_file_writes_current_process=${droppedFileWrites.get()}; " +
+                                    "rotation_may_truncate_sessions=true",
+                            )
+                            appendInvestigationGuide(writer, RouterSettings(context))
+                            (MAX_ARCHIVES downTo 1).forEach { index ->
+                                val archive = archive(index)
+                                if (archive.exists()) writer.append(archive.readText())
+                            }
+                            if (file.exists()) writer.append(file.readText())
+                        } != null
+                    } catch (_: Exception) {
+                        false
+                    }
+                main.post { done(ok) }
+            }
+        if (!queued) main.post { done(false) }
     }
 
     /** Export-time configuration is separate from the historical call-boundary snapshots. */

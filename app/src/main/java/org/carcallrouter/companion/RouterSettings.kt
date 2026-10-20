@@ -15,8 +15,9 @@ class RouterSettings(
         val result: Result
             get() =
                 when {
-                    confirmation == "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE" -> Result.INCOMPLETE
+                    confirmation in setOf("USER_REPORTED_WRONG_AUDIO", "ROUTING_FAILED") -> Result.FAILED
                     phase == "FAILED" -> Result.FAILED
+                    confirmation == "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE" -> Result.INCOMPLETE
                     confirmation == "TARGET_HFP_AUDIO_UNSTABLE" -> Result.UNSTABLE
                     confirmation == "TARGET_HFP_AUDIO" &&
                         (phase == "RELEASED" || reason == "CALL_NOT_ACTIVE") -> Result.HFP_CONFIRMED
@@ -35,7 +36,7 @@ class RouterSettings(
     val targetAddress: String? get() = prefs.getString("target", null)
     val targetName: String get() = prefs.getString("target_name", "Not selected") ?: "Not selected"
     val competitorAddress: String? get() = prefs.getString("competitor", null)
-    val competitorName: String get() = prefs.getString("competitor_name", "None — no takeover retries") ?: "None"
+    val competitorName: String get() = prefs.getString("competitor_name", "None — observed-owner recovery") ?: "None"
 
     fun setTarget(
         address: String,

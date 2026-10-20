@@ -7,8 +7,8 @@ The Android Gradle module accepts three optional Gradle properties. They may be 
 | Property | Default | Purpose |
 |---|---|---|
 | `APP_APPLICATION_ID` | `org.carcallrouter.companion` | Installable Android application ID. Choose an ID controlled by the build owner. |
-| `APP_VERSION_CODE` | `22` | Monotonically increasing Android version code. |
-| `APP_VERSION_NAME` | `0.3.0-beta.20` | Human-readable version string. |
+| `APP_VERSION_CODE` | `23` | Monotonically increasing Android version code. |
+| `APP_VERSION_NAME` | `0.3.0-beta.21` | Human-readable version string. |
 
 Example:
 
@@ -16,7 +16,7 @@ Example:
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
   -PAPP_VERSION_CODE=16 \
-  -PAPP_VERSION_NAME=0.3.0-beta.20 \
+  -PAPP_VERSION_NAME=0.3.0-beta.21 \
   :app:assembleDebug
 ```
 
@@ -24,7 +24,7 @@ Changing the application ID creates a distinct Android application. Any protecte
 
 ## Runtime choices
 
-At runtime, a person configuring a test device chooses the target Bluetooth call device from already paired devices. The app stores the chosen address and display name in application-private `SharedPreferences`; neither value is compiled into the source tree or transmitted by the app. If the Android Auto head unit is another paired HFP call device, the user can optionally identify it as the competing device. This permits one bounded request to restore the manual call selector only when Telecom displays the target but that exact competing device still owns HFP audio after the target request. Without a configured competitor, the app cannot safely restore the selector in that split state. It never retries or reasserts the target.
+At runtime, choose the preferred call device from already paired devices. Its address and display name remain in application-private preferences. The optional competing device restricts recovery to that exact device. Without it, recovery may use only the sole non-target HFP audio owner resolved uniquely from fresh live identity evidence; it does not infer which device is Android Auto. If Telecom displays the target while that stable owner still carries audio, the app may align Telecom with the observed owner, verify the endpoint change, and make the single target request. Reconciliation precedes that request; each transaction permits at most one of each. Unknown or conflicting evidence blocks recovery. See [the recovery contract](ROUTING-RELIABILITY-2026-10-20.md).
 
 The master automation toggle is disabled by default. It cannot be enabled until the target is selected, the required runtime permissions are granted, and the operating system reports that the protected ongoing-call authorization is present. A manual one-shot is available only while Telecom has bound the service, and it retains all authorization, call-safety, and target-identity requirements.
 

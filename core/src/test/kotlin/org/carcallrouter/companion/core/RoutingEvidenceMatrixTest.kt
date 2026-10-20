@@ -45,7 +45,8 @@ class RoutingEvidenceMatrixTest {
                                                         projection == true &&
                                                         hfp == true &&
                                                         available == true &&
-                                                        audio == false
+                                                        audio == false &&
+                                                        route != Route.TARGET
                                                 val label =
                                                     snapshotLabel(
                                                         enabled,
@@ -77,7 +78,7 @@ class RoutingEvidenceMatrixTest {
             }
         }
         assertEquals(20_736, combinations)
-        assertEquals(8, requests)
+        assertEquals(7, requests)
     }
 
     @Test

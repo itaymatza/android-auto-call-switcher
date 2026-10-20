@@ -63,10 +63,11 @@ the [compatibility guide](docs/DEVICE-COMPATIBILITY.md) and [FAQ](docs/FAQ.md) b
 
 ## Project status
 
-The routing proof of concept has been confirmed by the project owner on the intended Samsung + Android Auto + native BMW Bluetooth setup: an active cellular call moved to the selected native hands-free endpoint, including its microphone, while Android Auto remained active. That confirms the core approach, not production reliability. Version `0.3.0-beta.20` collects read-only evidence during outgoing dialing and requests the selected call device only after answer, with a maximum of one automatic target request per call. Unattributed call-start Bluetooth requests cannot cancel a request the app has not yet made. Possible manual choices remain protected. It samples HFP ownership throughout active calls and records call-relative timing, observation gaps, and user-reported wrong audio. Incoming calls retain answer-time routing. Protected call eligibility, authorization and projection-provider reads now run off-thread, and pending or delayed evidence cannot authorize a request. Audio-mode checks and optional device inventories have separate bounded workers and independent freshness. Exact HFP audio, live identity labels and power diagnostics are also isolated; Bluetooth change events invalidate old reads. Multiple-device endpoint matching uses fresh live labels rather than saved names. Seamless physical audio remains subject to device qualification; see the [production-readiness gates](docs/PRODUCTION-READINESS.md).
+Earlier owner testing established that the Telecom approach can move a call to the preferred device, but recent calls exposed unreliable routing and misleading endpoint indications. Version `0.3.0-beta.21` addresses a specific failure: Telecom can accept a request for its already-selected endpoint without changing Bluetooth call audio.
 
+The app waits until answer and the startup quiet window. If Telecom already displays the preferred device while another uniquely identified device owns HFP audio, it reconciles the displayed endpoint with that stable observed owner first, verifies the change, then makes the single preferred-device request. Ordinary transitions need only the preferred-device request. The budget is **one target request plus at most one preceding reconciliation**, with fresh eligibility and identity checks throughout. A request result alone never proves audio success.
 
-Beta.19 avoids the observed pre-answer routing collision, samples call audio every 500 ms within its service lifetime, and resumes observation after temporary authorization uncertainty. Brief unknown samples that recover within the observation budget no longer permanently poison the call summary; unresolved final samples and long gaps remain incomplete. Exports record unattributed request decisions and retain up to approximately 24 MB of recent diagnostics. See the [fresh review](docs/REVIEW-2026-10-09.md) for evidence and remaining limits.
+A prominent current call-audio indicator distinguishes observed target audio, disagreement, other-device audio and unknown evidence. Explicit wrong-audio reports and known routing failures remain visible in saved results. Independent Telecom/HFP simulations cover delayed transitions, callback order, absent configuration, rejected recovery and persistent failure. Physical speaker/microphone reliability still needs qualification on the new APK. See the [research and verification record](docs/ROUTING-RELIABILITY-2026-10-20.md) and [production-readiness gates](docs/PRODUCTION-READINESS.md).
 
 ## Public-repository posture
 
@@ -89,19 +90,19 @@ The source namespace is the generic value `org.carcallrouter.companion`. Overrid
 ```sh
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
-  -PAPP_VERSION_CODE=22 \
-  -PAPP_VERSION_NAME=0.3.0-beta.20 \
+  -PAPP_VERSION_CODE=23 \
+  -PAPP_VERSION_NAME=0.3.0-beta.21 \
   :app:assembleDebug
 ```
 
 
-`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `22`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.20`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
+`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `23`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.21`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
 
 
 ### Runtime configuration
 
 
-The app is configuration-driven at runtime and has no car-brand matching rules. Select a paired classic Bluetooth HFP call device—a headset, earbuds, speakerphone, or car system—regardless of brand. LE Audio-only targets are not supported by the current audio verification backend. This is a capability-based design; only the documented Samsung/BMW setup has owner-confirmed physical test evidence so far. Grant the requested runtime permissions, select the exact paired call device, complete the one-time ADB authorization, and verify the result in the app. If the Android Auto head unit is a separate Bluetooth call device, optionally select that exact competing device. This permits one bounded manual-selector recovery when it is confirmed to own HFP audio after a failed target request; it does not enable another target request. The UI contains no built-in device name, address, car brand, phone brand, or dialer requirement.
+The app is configuration-driven at runtime and has no car-brand matching rules. Select a paired classic Bluetooth HFP call device—a headset, earbuds, speakerphone, or car system—regardless of brand. LE Audio-only targets are not supported by the current audio verification backend. This is a capability-based design; only the documented Samsung/BMW setup has owner-confirmed physical test evidence so far. Grant the requested runtime permissions, select the exact paired call device, complete the one-time ADB authorization, and verify the result in the app. If the Android Auto head unit is a separate Bluetooth call device, optionally select that exact competing device. This restricts recovery to that device. Without this optional setting, recovery still requires the sole observed HFP owner to resolve uniquely through fresh live identity evidence. The UI contains no built-in device name, address, car brand, phone brand, or dialer requirement.
 
 ## Why ADB is required
 
@@ -121,7 +122,7 @@ account is not required just to download the APK.
 
 | Version | Channel | Downloads |
 | --- | --- | --- |
-| `0.3.0-beta.20` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
+| `0.3.0-beta.21` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
 | `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.10-debug) |
 | `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.9-debug) |
 | `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.7-debug) |
@@ -134,7 +135,7 @@ A new debug APK is published for each successful push to `main` on the [Releases
 
 The easiest path is the durable direct download:
 
-1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.20` debug pre-release.
+1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.21` debug pre-release.
 2. Open the downloaded APK on the Android device.
 3. If Android prompts you, temporarily allow **Install unknown apps** for the browser or file
    manager, install the APK, and then disable that permission again.
@@ -185,7 +186,7 @@ in the private reporting path described by [SECURITY.md](SECURITY.md), not a pub
 ## Safety model and limitations
 
 
-The policy fails closed. It requires Telecom authorization, runtime permissions, a verifiably SIM-backed non-emergency call, a single active call, a configured target present in both Telecom and HFP state, and—when using automatic mode—a verified projection-host state. Evidence may arrive for up to ten seconds. Call-start routing settles for at least 300 ms, with recent activity extending the wait up to 900 ms. The app makes at most one target request per dialing/answer phase (two automatic target requests per call at most) and allows four seconds for exact target HFP/SCO confirmation; it never retries or reasserts the target within that phase. If that window ends in the exact observed split state—Telecom displays the target while the explicitly configured competing endpoint still owns SCO—the app may make one additional, bounded request to display that already-active competing endpoint so the target becomes manually selectable again. Without that configured device, recovery is unavailable because the app cannot safely guess which of several HFP devices owns Android Auto audio. Observed handset, speaker, wired, and resolved changes to a third Bluetooth device stop pending automation. API 37 protected endpoint requests are honored even before their route callback; request callbacks alone cannot distinguish an Android Auto startup action from a user choice. An already-submitted platform request cannot be recalled. The explicit manual one-shot bypasses only the automatic toggle and projection gate; it does not bypass authorization, identity, device-presence, or emergency safeguards.
+The policy requires Telecom authorization, runtime permissions, a verifiably SIM-backed non-emergency call, a single active call, an exact target present in Telecom and HFP state, and verified projection for automatic mode. Evidence may arrive for up to ten seconds. Call-start routing settles for 300–900 ms after answer. The single target request allows four seconds for fresh, stable target HFP audio. Before that request, a pre-existing Telecom/actual-owner mismatch requires one reconciliation to a sole owner observed stably for at least 500 ms; samples older than 750 ms cannot authorize it. Reconciliation must produce the expected endpoint and fresh matching ownership within 2.5 seconds before the single target request. The maximum is two commands, never a loop. Stale or ambiguous identity, changed ownership, lost eligibility and observed external control block recovery. Protected handset, speaker, wired and unrelated Bluetooth choices stop automation. An already-submitted platform request cannot be recalled, and Android does not reliably expose the source or intent of every endpoint request. The manual routing action bypasses only the automatic toggle and projection gate. See the [safety analysis](docs/ROUTING-RELIABILITY-2026-10-20.md).
 
 
 Routing uses API 34+ `requestCallEndpointChange()` with an endpoint object from the latest `onAvailableCallEndpointsChanged()` callback. The deprecated `requestBluetoothAudio(BluetoothDevice)` path has been removed. Because the public endpoint API exposes a name and UUID but no Bluetooth address, the app resolves identity only when the selected device’s current name or alias uniquely matches a live Bluetooth endpoint without a connected peer-name conflict or when exactly one HFP device and one Bluetooth endpoint exist. Ambiguity fails closed. Endpoint UUIDs are not persisted.

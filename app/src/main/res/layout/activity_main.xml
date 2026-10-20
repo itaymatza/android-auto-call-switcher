@@ -98,6 +98,14 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/call_audio_status"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" android:padding="18dp"
+            android:background="@drawable/bg_card" android:textColor="@color/text_primary"
+            android:textSize="18sp" android:textStyle="bold"
+            android:accessibilityLiveRegion="polite" android:text="@string/audio_no_call" />
+
         <TextView style="@style/SectionTitle"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="@string/last_call_title" />
