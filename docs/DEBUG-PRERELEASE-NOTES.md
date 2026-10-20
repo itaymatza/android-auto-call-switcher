@@ -33,7 +33,7 @@ to the workflow and source commit that produced it.
 - Adds a prominent current call-audio indicator; preferred-device configuration and request acceptance never become audio confirmation. A user report overrides positive platform indicators.
 - Uses typed routing commands, one production policy for tests and the app, and one session-finalization path. Preserves failures across immediate pause, disconnect, incomplete observation and service teardown, including offline analysis.
 - Bounds diagnostic writes and exports dropped-write counts; saturated export requests report failure without blocking routing.
-- Adds 192 independent Telecom/HFP transport combinations and regressions for manual reconciliation without projection. Tests cover across callback order, transition delays, request echoes, competitor settings and persistent failure. See [research and verification](https://github.com/itaymatza/android-auto-call-switcher/blob/main/docs/ROUTING-RELIABILITY-2026-10-20.md).
+- Adds 192 independent Telecom/HFP transport combinations and regressions for manual reconciliation without projection. Tests cover callback order, transition delays, request echoes, competitor settings and persistent failure. See [research and verification](https://github.com/itaymatza/android-auto-call-switcher/blob/main/docs/ROUTING-RELIABILITY-2026-10-20.md).
 
 These changes are software-verified. Samsung/Android Auto physical speaker and microphone behavior still requires a new parked trial on this APK.
 
