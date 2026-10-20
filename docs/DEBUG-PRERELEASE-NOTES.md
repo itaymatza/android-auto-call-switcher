@@ -25,7 +25,18 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.20
+## What changed in beta.21
+
+- Addresses accepted target requests that do nothing because Telecom already displays that endpoint while another device owns HFP audio. After a persistent mismatch, reconcile Telecom with the sole stable observed owner, wait for endpoint confirmation, then request the target once more.
+- Caps a transaction at two target requests and one reconciliation. Unknown identity, stale/ambiguous audio, changed ownership, external requests and lost eligibility block recovery; no speaker bounce or repeating loop.
+- Recovery works without a configured competitor only when live identity resolves the sole observed owner uniquely. A configured competitor further restricts that owner.
+- Adds a prominent current call-audio indicator; preferred-device configuration and request acceptance never become audio confirmation. A user report overrides positive platform indicators.
+- Preserves known routing failures across disconnect, incomplete observation and service teardown, including offline analysis.
+- Adds independent Telecom/HFP transport simulations across callback order, transition delays, request echoes, competitor settings and persistent failure. See [research and verification](ROUTING-RELIABILITY-2026-10-20.md).
+
+These changes are software-verified. Samsung/Android Auto physical speaker and microphone behavior still requires a new parked trial on this APK.
+
+## Earlier beta.20 behavior
 
 - Fixes duplicate trace fields that caused strict analysis to discard call-boundary events; the analyzer also recovers identical duplicates from older exports.
 - Adds `AUDIO_ROUTE_HEALTH_CHANGED` for target signal agreement, Telecom/HFP disagreement, missing SCO, ambiguous owners and other-device audio. These are sampled platform observations, not physical speaker or microphone proof.

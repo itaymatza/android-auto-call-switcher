@@ -1,0 +1,7 @@
+Version 0.3.0-beta.21
+
+Fix selected-endpoint/audio disagreement with one bounded reconcile-and-retry sequence after answer. Recovery requires a fresh, stable, uniquely identified audio owner and stops on external requests or lost eligibility.
+
+Show current call-audio evidence prominently. Keep user-reported and observed routing failures in the last-call result, including incomplete teardown.
+
+Adds divergent Telecom/HFP transport simulations. Physical car audio qualification remains required.

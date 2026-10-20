@@ -2,7 +2,7 @@
 
 ## Current classification
 
-`0.3.0-beta.20` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
+`0.3.0-beta.21` is a production-hardening beta. The real-device proof of concept validates the core Telecom endpoint approach, but intermittent behavior means the project must not yet be described as production-ready.
 
 ## Completed engineering gates
 
@@ -44,9 +44,9 @@
   current-route evidence plus 1,000 seeded callback storms. Protected handset/speaker/wired edges
   are latched even when callbacks coalesce, while a pre-snapshot car Bluetooth route remains
   unresolved instead of being misclassified as a user override.
-- Requests are generation-tokened. The target request is submitted once. A timeout can be followed
-  by late HFP audio confirmation within the bounded observation window, but never triggers another
-  target request. Selector recovery is a separate one-shot action under the exact split-state guard.
+- Requests are generation-tokened. Timeout alone does not trigger a retry. A stable observed-owner
+  mismatch permits one reconciliation followed by one target retry only after endpoint and fresh
+  HFP evidence agree. The transaction budget is two target requests and one reconciliation.
 - API 37 request markers are call-generation-bound and expire; late result callbacks are ignored.
   Startup-request replays are classified separately, while a later external request suppresses
   selector recovery. The diagnostic analyzer flags route oscillation and post-confirmation audio loss.
@@ -76,4 +76,4 @@
 
 ## Stability rule
 
-Do not add retries merely to improve a success percentage. Each phase is one-shot; outgoing calls have a dialing phase and answer verification with at most two automatic target requests for the entire call. Incoming calls have one answer-time target request. The explicitly configured competing endpoint may receive a separate, single selector-recovery request only when it owns HFP audio and Telecom still displays the target after the verification window. Unknown evidence freezes routing; confirmed safety loss stops it; an alternative route that may be a user choice is never fought.
+Automatic routing begins only after answer, for both incoming and outgoing calls. A persistent selected-endpoint/audio mismatch can authorize one reconcile-and-retry sequence, subject to fresh sole-owner identity, stable ownership, endpoint confirmation, current call eligibility and a fixed deadline. The whole automatic call budget is two target requests and one reconciliation. Optional competitor configuration narrows the allowed recovery owner. Unknown evidence cannot authorize a command; changed ownership and observed external control stop recovery. Request acceptance is not audio confirmation. See [the research, changed safety boundary and tests](ROUTING-RELIABILITY-2026-10-20.md).

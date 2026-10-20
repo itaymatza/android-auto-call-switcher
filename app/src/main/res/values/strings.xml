@@ -65,7 +65,7 @@
     <string name="command_copied">Authorization command copied</string>
     <string name="target_step_title">2. Preferred call device</string>
     <string name="target_missing">No device selected. Pair your call device in Android Bluetooth settings first.</string>
-    <string name="target_selected">✓ %1$s selected for calls</string>
+    <string name="target_selected">Preferred device: %1$s (configuration)</string>
     <string name="target_action">Choose Bluetooth device</string>
     <string name="target_action_change">Change selected device</string>
     <string name="test_title">Test safely</string>
@@ -75,10 +75,10 @@
     <string name="show_advanced">Advanced options ▾</string>
     <string name="hide_advanced">Advanced options ▴</string>
     <string name="competitor_title">Call selector recovery device</string>
-    <string name="competitor_none">Not configured — automatic routing has no selector recovery</string>
-    <string name="competitor_selected">%1$s selected for manual-selector recovery</string>
+    <string name="competitor_none">Not configured — recovery requires one uniquely identified audio owner</string>
+    <string name="competitor_selected">%1$s selected as the allowed recovery device</string>
     <string name="competitor_action">Choose competing device</string>
-    <string name="competitor_help">For recovery from a stuck call selector, choose the exact Bluetooth call device used by the Android Auto head unit. Without it, recovery is unavailable. After a failed one-shot route, the app can restore the call selector only when this device is confirmed to own HFP audio. It never retries the preferred device. Leave this unset if the other call device is uncertain.</string>
+    <string name="competitor_help">Optional: restrict recovery to the exact Bluetooth call device used by the Android Auto head unit. If the call selector and audio disagree, the app can align the selector with the single observed audio device, then try your preferred device once more. Without this setting, recovery still requires one uniquely identified audio device. Uncertain evidence stops recovery.</string>
     <string name="battery_settings">Battery settings (only if calls are missed)</string>
     <string name="battery_dialog_title">Optional battery settings</string>
     <string name="battery_dialog_message">Use this only if real tests show missed calls while the phone is idle. A battery exemption does not guarantee Telecom binding, and the app will not change this setting automatically.</string>
@@ -128,4 +128,12 @@
     <string name="parked_test_saved">Observations recorded in the redacted log. Export it with your test report.</string>
     <string name="parked_test_changed">The call or device configuration changed, or no completed call is available. Finish a parked test call and start a new report.</string>
     <string name="authorization_checking">Checking call-routing access…</string>
+    <string name="audio_no_call">Call audio: no call observed</string>
+    <string name="audio_waiting">Call audio: waiting for answer</string>
+    <string name="audio_unconfirmed">Call audio unconfirmed — current evidence is missing or ambiguous</string>
+    <string name="audio_target_observed">Bluetooth audio observed on the preferred device. Speaker and microphone still need physical verification.</string>
+    <string name="audio_mismatch">Routing mismatch — the phone selector and Bluetooth audio disagree</string>
+    <string name="audio_other_device">Call audio is observed on another Bluetooth device</string>
+    <string name="audio_no_bluetooth">No Bluetooth call audio observed</string>
+    <string name="audio_user_problem">Call audio problem reported — platform indicators do not establish success</string>
 </resources>

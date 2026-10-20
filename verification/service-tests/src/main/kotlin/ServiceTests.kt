@@ -1,6 +1,8 @@
 import android.content.Context
 import android.content.Intent
 import android.content.MemoryPrefs
+import android.os.Handler
+import android.os.Looper
 import android.os.TestQueue
 import android.telecom.Call
 import android.telecom.CallEndpoint
@@ -11,6 +13,7 @@ import org.carcallrouter.companion.ProjectionMonitor
 import org.carcallrouter.companion.RouterLog
 import org.carcallrouter.companion.RouterSettings
 import org.carcallrouter.companion.SessionBridge
+import org.carcallrouter.companion.core.CallAudioStatus
 import org.carcallrouter.companion.telecom.AddressedTelecomRouter
 import org.carcallrouter.companion.telecom.AudioFrameworkProbe
 import org.carcallrouter.companion.telecom.CellularClassifier
@@ -145,7 +148,7 @@ private fun countEquals(
 }
 
 fun main(args: Array<String>) {
-    val tests =
+    val baseTests =
         listOf<Pair<String, () -> Unit>>(
             "audio_health_distinguishes_endpoint_mismatch_from_missing_and_ambiguous_sco" to {
                 Fixture().use { f ->
@@ -206,6 +209,7 @@ fun main(args: Array<String>) {
                     f.activateAndSettle()
                     f.service.onUnbind(Intent())
                     check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.INCOMPLETE)
+                    check(SessionBridge.audioStatus == CallAudioStatus.UNCONFIRMED)
                 }
             },
             "new_call_waits_for_its_own_endpoint_snapshot" to {
@@ -376,11 +380,11 @@ fun main(args: Array<String>) {
                     countEquals(f, 1)
                 }
             },
-            "selector_recovery_missing_configuration_is_visible" to {
+            "selector_recovery_uses_unique_observed_owner_without_configuration" to {
                 Fixture(initialEndpoint = target).use { f ->
                     RouterSettings(f.service).setCompetitor(null, null)
                     f.activateAndSettle()
-                    check(SessionBridge.status.contains("competing device not configured"))
+                    check(SessionBridge.status.contains("sole observed audio owner resolved"))
                     countEquals(f, 1)
                 }
             },
@@ -659,11 +663,11 @@ fun main(args: Array<String>) {
                     countEquals(f, 1)
                     TestQueue.sleepFor(16_000)
                     TestQueue.advanceTo(20_500)
-                    check(f.service.issuedRequests.map { it.second } == listOf(TARGET_ID.toString(), COMPETING_ID.toString()))
-                    check(SessionBridge.status.contains("SELECTOR_RECOVERY_ACCEPTED"))
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("TARGET_AUDIO_NOT_CONFIRMED"))
                     TestQueue.advanceTo(23_000)
-                    countEquals(f, 2)
-                    check(SessionBridge.status.contains("SELECTOR_RECOVERY_NOT_CONFIRMED"))
+                    countEquals(f, 1)
+                    check(SessionBridge.status.contains("TARGET_AUDIO_NOT_CONFIRMED"))
                     check(
                         RouterLog.events.any {
                             it.first == "ROUTING_TRACE" &&
@@ -692,20 +696,20 @@ fun main(args: Array<String>) {
                     check("target_sco=true" in changes[1] && "hfp_audio_owner=TARGET" in changes[1])
                 }
             },
-            "split_brain_failure_restores_phone_selector_once" to {
+            "split_brain_reconciliation_then_target_retry_is_bounded" to {
                 Fixture(initialEndpoint = target).use { f ->
                     f.activateAndSettle()
                     countEquals(f, 1)
-                    TestQueue.advanceTo(4_500)
+                    advanceSampledTo(4_500)
                     countEquals(f, 2)
                     check(f.service.issuedRequests[0].second == TARGET_ID.toString())
                     check(f.service.issuedRequests[1].second == COMPETING_ID.toString())
                     check(SessionBridge.status.contains("RECOVERING_SELECTOR"))
                     check(SessionBridge.status.contains("selectorRecoveries=1"))
                     f.route(competing)
-                    check(SessionBridge.status.contains("SELECTOR_RECOVERY_CONFIRMED"))
-                    TestQueue.advanceTo(10_000)
-                    countEquals(f, 2)
+                    check(SessionBridge.status.contains("attempts=2"))
+                    advanceSampledTo(10_000)
+                    countEquals(f, 3)
                     check(
                         RouterLog.events.any {
                             it.first == "ROUTING_TRACE" && it.second.contains("event=SELECTOR_RECOVERY_SUBMITTED")
@@ -724,7 +728,7 @@ fun main(args: Array<String>) {
                     check(
                         traces.any {
                             "event=SELECTOR_RECOVERY_SUBMITTED" in it &&
-                                "competitor_sco=true" in it &&
+                                "recovery_owner_sco=true" in it &&
                                 "endpoint_revision=" in it
                         },
                     )
@@ -735,7 +739,7 @@ fun main(args: Array<String>) {
                                 "hfp_audio_owner=COMPETITOR" in it
                         },
                     )
-                    check(traces.any { "event=SELECTOR_RECOVERY_CONFIRMED" in it })
+                    check(traces.any { "event=RECONCILIATION_CONFIRMED" in it })
                 }
             },
             "selector_recovery_requires_exact_verified_split_brain" to {
@@ -755,7 +759,7 @@ fun main(args: Array<String>) {
                 Fixture(initialEndpoint = target).use { f ->
                     f.service.autoCompleteRequests = false
                     f.activateAndSettle()
-                    TestQueue.advanceTo(4_500)
+                    advanceSampledTo(4_500)
                     countEquals(f, 2)
                     f.service.failLatest(CallEndpointException.ERROR_UNSPECIFIED)
                     f.flush()
@@ -768,7 +772,7 @@ fun main(args: Array<String>) {
                 listOf(speaker, handset, wired, other).forEach { protectedRoute ->
                     Fixture(initialEndpoint = target).use { f ->
                         f.activateAndSettle()
-                        TestQueue.advanceTo(4_500)
+                        advanceSampledTo(4_500)
                         countEquals(f, 2)
                         f.route(protectedRoute)
                         check(SessionBridge.status.contains("SUSPENDED"))
@@ -1553,15 +1557,20 @@ fun main(args: Array<String>) {
                     }
                 }
             },
-            "outgoing_answer_acceptance_without_sco_has_no_automatic_retry" to {
+            "outgoing_answer_acceptance_without_reconciled_endpoint_never_retries_target" to {
                 Fixture(initialState = Call.STATE_DIALING, initialEndpoint = target, configureCompetitor = false).use { f ->
                     TestQueue.advanceTo(500)
                     countEquals(f, 0)
                     f.activateAndSettle()
                     countEquals(f, 1)
                     repeat(40) { TestQueue.advanceTo(TestQueue.now + 250) }
-                    countEquals(f, 1)
-                    check("TARGET_AUDIO_NOT_CONFIRMED" in SessionBridge.status)
+                    countEquals(f, 2)
+                    check(
+                        f.service.issuedRequests
+                            .last()
+                            .second == COMPETING_ID.toString(),
+                    )
+                    check("SELECTOR_RECOVERY_NOT_CONFIRMED" in SessionBridge.status)
                     check(!SessionBridge.status.contains("Selected device confirmed=true"))
                 }
             },
@@ -1607,7 +1616,11 @@ fun main(args: Array<String>) {
                     f.flush()
                     TestQueue.advanceTo(2000)
                     countEquals(f, 0)
-                    check(RouterLog.events.any { "event=CALL_DURATION_SUMMARY" in it.second && "connected_duration_ms=null" in it.second })
+                    check(
+                        RouterLog.events.any {
+                            "event=CALL_DURATION_SUMMARY" in it.second && "connected_duration_ms=null" in it.second
+                        },
+                    )
                 }
             },
             "late_silent_audio_loss_is_observed_without_fighting_user" to {
@@ -1656,8 +1669,11 @@ fun main(args: Array<String>) {
                     f.call.deliverState(Call.STATE_DISCONNECTED)
                     f.service.onCallRemoved(f.call)
                     f.flush()
-                    check(RouterLog.events.any { "event=SESSION_FINISHED" in it.second && "user_reported_wrong_audio=true" in it.second })
-                    check(RouterSettings(f.service).lastSession?.confirmation == "TARGET_HFP_AUDIO_UNSTABLE")
+                    check(
+                        RouterLog.events.any { "event=SESSION_FINISHED" in it.second && "user_reported_wrong_audio=true" in it.second },
+                    )
+                    check(RouterSettings(f.service).lastSession?.confirmation == "USER_REPORTED_WRONG_AUDIO")
+                    check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.FAILED)
                 }
             },
             "request_events_include_answer_relative_and_dialing_relative_timing" to {
@@ -1676,7 +1692,11 @@ fun main(args: Array<String>) {
                     )
                     f.service.onCallEndpointRequested(target)
                     f.flush()
-                    check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "request_source=UNKNOWN" in it.second })
+                    check(
+                        RouterLog.events.any {
+                            "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "request_source=UNKNOWN" in it.second
+                        },
+                    )
                 }
             },
             "brief_unknown_sample_does_not_poison_whole_call_confirmation" to {
@@ -1781,9 +1801,9 @@ fun main(args: Array<String>) {
                     f.activateAndSettle()
                     f.flush()
                     repeat(240) { TestQueue.advanceTo(TestQueue.now + 250) }
-                    countEquals(f, 1)
+                    countEquals(f, 2)
                     check(SessionBridge.status.contains("Selected device confirmed=false"))
-                    check(SessionBridge.status.contains("TARGET_AUDIO_NOT_CONFIRMED"))
+                    check(SessionBridge.status.contains("SELECTOR_RECOVERY_NOT_CONFIRMED"))
                     check(RouterLog.events.any { "event=CALL_AUDIO_OBSERVATION" in it.second && "target_sco=false" in it.second })
                     f.call.deliverState(Call.STATE_DISCONNECTED)
                     f.service.onCallRemoved(f.call)
@@ -1796,7 +1816,11 @@ fun main(args: Array<String>) {
                     f.activateAndSettle()
                     f.service.onCallEndpointRequested(target)
                     f.flush()
-                    check(RouterLog.events.any { "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "request_source=UNKNOWN" in it.second })
+                    check(
+                        RouterLog.events.any {
+                            "event=ENDPOINT_REQUEST_OBSERVED" in it.second && "request_source=UNKNOWN" in it.second
+                        },
+                    )
                 }
             },
             "projection_provider_evidence_and_single_failure_incident_are_exported" to {
@@ -1814,11 +1838,14 @@ fun main(args: Array<String>) {
                     val incidents = RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=DIAGNOSTIC_INCIDENT" in it.second }
                     check(incidents == 1)
                     f.endpoints(listOf(target, competing, other))
-                    check(RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=DIAGNOSTIC_INCIDENT" in it.second } == incidents)
+                    check(
+                        RouterLog.events.count { it.first == "ROUTING_TRACE" && "event=DIAGNOSTIC_INCIDENT" in it.second } == incidents,
+                    )
                 }
             },
         )
 
+    val tests = reconciliationSimulations() + baseTests
     val failed = mutableListOf<String>()
     val output = mutableListOf<String>()
     for ((name, test) in tests) {
@@ -1838,4 +1865,157 @@ fun main(args: Array<String>) {
     output.forEach(::println)
     args.firstOrNull()?.let { File(it).writeText(output.joinToString("\n") + "\n") }
     check(failed.isEmpty()) { "Service scenarios failed: ${failed.joinToString()}" }
+}
+
+/** Advances in small increments so the real service timers can sample between callbacks. */
+private fun advanceSampledTo(until: Long) {
+    while (TestQueue.now < until) TestQueue.advanceTo(minOf(until, TestQueue.now + 25))
+}
+
+/**
+ * Two independent states: Telecom's displayed endpoint and actual reported HFP ownership.
+ * Implements AOSP's same-endpoint early success; acceptance does not mutate either state.
+ * This model deliberately allows the two states to diverge, including after a successful request.
+ */
+private fun simulateTransport(
+    f: Fixture,
+    delay: Long,
+    endpointFirst: Boolean,
+    selfCallbacks: Boolean,
+    targetWorks: Boolean,
+) {
+    val handler = Handler(Looper.getMainLooper())
+    f.service.onEndpointRequest = { requested ->
+        if (selfCallbacks) handler.post { f.service.onCallEndpointRequested(requested) }
+        if (f.service.currentCallEndpoint.identifier != requested.identifier) {
+            val owner = if (requested.identifier == TARGET_ID) TARGET else COMPETING
+            handler.postDelayed({ f.route(requested) }, if (endpointFirst) delay / 2 else delay)
+            if (owner != TARGET || targetWorks) {
+                handler.postDelayed({
+                    HfpMonitor.audioDevices = setOf(owner)
+                    HfpMonitor.emit(HfpMonitor.devices)
+                }, if (endpointFirst) delay else delay / 2)
+            }
+        }
+    }
+}
+
+private fun reconciliationSimulations(): List<Pair<String, () -> Unit>> {
+    val cases = mutableListOf<Pair<String, () -> Unit>>()
+    for (delay in listOf(80L, 300L, 800L, 1400L)) {
+        for (endpointFirst in listOf(false, true)) {
+            for (selfCallbacks in listOf(false, true)) {
+                for (configured in listOf(false, true)) {
+                    for (works in listOf(false, true)) {
+                        val name =
+                            "transport_noop_delay_${delay}_endpoint_first_$endpointFirst" +
+                                "_self_${selfCallbacks}_configured_${configured}_works_$works"
+                        cases += name to {
+                            Fixture(initialEndpoint = target, configureCompetitor = configured).use { f ->
+                                simulateTransport(f, delay, endpointFirst, selfCallbacks, works)
+                                f.activateWithoutSettling()
+                                advanceSampledTo(2000)
+                                countEquals(f, 1)
+                                check(SessionBridge.audioStatus == CallAudioStatus.MISMATCH)
+                                check(HfpMonitor.audioDevices == setOf(COMPETING))
+                                check(RouterLog.events.any { "event=REQUEST_ACCEPTED" in it.second })
+                                advanceSampledTo(15000)
+                                val requests = f.service.issuedRequests.map { it.second }
+                                check(requests == listOf(TARGET_ID.toString(), COMPETING_ID.toString(), TARGET_ID.toString())) {
+                                    "Unexpected request sequence $requests: ${SessionBridge.status}"
+                                }
+                                check((SessionBridge.audioStatus == CallAudioStatus.TARGET_OBSERVED) == works) {
+                                    "Unexpected audio assessment ${SessionBridge.audioStatus}: ${SessionBridge.status}"
+                                }
+                                check(("Selected device confirmed=true" in SessionBridge.status) == works)
+                                if (!works) check("FAILED" in SessionBridge.status)
+                                advanceSampledTo(30000)
+                                countEquals(f, 3) // no late retry, even when the simulated platform remains broken
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cases += "late_reconciliation_endpoint_cannot_restart_expired_transaction" to {
+        Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+            simulateTransport(f, 2000, false, false, true)
+            f.activateWithoutSettling()
+            advanceSampledTo(15000)
+            countEquals(f, 2)
+            check("SELECTOR_RECOVERY_NOT_CONFIRMED" in SessionBridge.status)
+            check(SessionBridge.audioStatus != CallAudioStatus.TARGET_OBSERVED)
+        }
+    }
+    cases += "reconciliation_external_request_interrupts_even_without_endpoint_change" to {
+        Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+            f.activateWithoutSettling()
+            advanceSampledTo(4500)
+            countEquals(f, 2)
+            f.service.onCallEndpointRequested(other)
+            f.route(competing) // completion of our older reconciliation must not issue target retry
+            advanceSampledTo(15000)
+            countEquals(f, 2)
+            check("EXTERNAL_ENDPOINT_REQUEST" in SessionBridge.status)
+        }
+    }
+    cases += "reconciliation_unknown_owner_and_duplicate_labels_never_guess" to {
+        for (kind in 0..2) {
+            Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+                when (kind) {
+                    0 -> HfpMonitor.audioDevices = emptySet()
+                    1 -> HfpMonitor.audioDevices = setOf(COMPETING, OTHER)
+                    2 -> HfpMonitor.labels = HfpMonitor.labels + (OTHER to setOf(competing.endpointName.toString()))
+                }
+                f.activateWithoutSettling()
+                advanceSampledTo(15000)
+                check(f.service.issuedRequests.size <= 1)
+                check(SessionBridge.audioStatus != CallAudioStatus.TARGET_OBSERVED)
+            }
+        }
+    }
+    cases += "explicit_wrong_audio_report_overrides_positive_platform_indicators" to {
+        Fixture().use { f ->
+            f.activateAndSettle()
+            f.route(target)
+            f.targetAudio(true)
+            advanceSampledTo(1500)
+            check(SessionBridge.audioStatus == CallAudioStatus.TARGET_OBSERVED)
+            f.service.reportWrongAudio()
+            f.flush()
+            check(SessionBridge.audioStatus == CallAudioStatus.USER_REPORTED_PROBLEM)
+            advanceSampledTo(5000)
+            countEquals(f, 1)
+        }
+    }
+    cases += "pre_answer_replay_of_actual_owner_does_not_mistake_stale_display_for_user_intent" to {
+        Fixture(initialState = Call.STATE_DIALING, initialEndpoint = target, configureCompetitor = false).use { f ->
+            advanceSampledTo(1000)
+            f.service.onCallEndpointRequested(competing)
+            f.flush()
+            check("SUSPENDED" !in SessionBridge.status)
+            countEquals(f, 0)
+            f.activateAndSettle()
+            countEquals(f, 1)
+        }
+    }
+    cases += "failed_routing_is_not_erased_by_disconnect_or_service_teardown" to {
+        for (unbind in listOf(false, true)) {
+            Fixture(initialEndpoint = target).use { f ->
+                f.activateWithoutSettling()
+                advanceSampledTo(10000)
+                check("FAILED" in SessionBridge.status)
+                if (unbind) {
+                    f.service.onUnbind(Intent())
+                } else {
+                    f.call.deliverState(Call.STATE_DISCONNECTED)
+                    f.service.onCallRemoved(f.call)
+                    f.flush()
+                }
+                check(RouterSettings(f.service).lastSession?.result == RouterSettings.Result.FAILED)
+            }
+        }
+    }
+    return cases
 }

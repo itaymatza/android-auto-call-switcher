@@ -125,6 +125,20 @@ class TraceAnalyzerTest(unittest.TestCase):
         self.assertEqual(1, summaries[0].user_audio_reports)
         self.assertEqual(1, summaries[0].diagnostic_incidents)
 
+    def test_terminal_record_retains_failure_without_intermediate_events(self):
+        for fields, expected in [
+            ("routing_failure_observed=true", "FAIL"),
+            ("user_reported_wrong_audio=true", "USER_REPORTED_FAILURE"),
+        ]:
+            with self.subTest(fields=fields):
+                summaries, _ = self.parse(
+                    line("abc", 1, 0, "SESSION_STARTED")
+                    + line("abc", 2, 500, "TARGET_HFP_AUDIO_CONFIRMED")
+                    + line("abc", 3, 1000, "SESSION_FINISHED",
+                           "phase=SUSPENDED observation_incomplete=true " + fields)
+                )
+                self.assertEqual(expected, summaries[0].status)
+
     def test_dual_confirmation_finished_session_passes(self):
         content = (
             line("abc", 1, 0, "SESSION_STARTED", "mode=manual trigger=route_now")

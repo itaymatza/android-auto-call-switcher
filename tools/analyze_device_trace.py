@@ -253,7 +253,8 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
         explicit_failure = any(
             event.event == "POLICY_STATE" and event.fields.get("phase") == "FAILED"
             for event in session_events
-        ) or (finish is not None and finish.fields.get("phase") == "FAILED")
+        ) or (finish is not None and (finish.fields.get("phase") == "FAILED"
+                                     or finish.fields.get("routing_failure_observed") == "true"))
         # Beta.13 records corroborated takeover separately from raw negative/unknown
         # samples. Teardown or stale evidence must not turn historical confirmation
         # into a physical-audio failure. Keep legacy exports' existing interpretation.
@@ -268,7 +269,7 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             status = "INVALID"
         elif finish is None:
             status = "OPEN"
-        elif user_audio_reports:
+        elif user_audio_reports or (finish is not None and finish.fields.get("user_reported_wrong_audio") == "true"):
             # Keep the user's physical observation visible even when platform signals agree.
             status = "USER_REPORTED_FAILURE"
         elif explicit_failure:

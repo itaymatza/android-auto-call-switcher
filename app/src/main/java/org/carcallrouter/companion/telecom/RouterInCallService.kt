@@ -18,6 +18,7 @@ import org.carcallrouter.companion.ProjectionMonitor
 import org.carcallrouter.companion.RouterLog
 import org.carcallrouter.companion.RouterSettings
 import org.carcallrouter.companion.SessionBridge
+import org.carcallrouter.companion.core.CallAudioStatus
 import org.carcallrouter.companion.core.CallSafety
 import org.carcallrouter.companion.core.CallTimeline
 import org.carcallrouter.companion.core.RoutingPolicy
@@ -81,6 +82,7 @@ class RouterInCallService :
     private var lastCallObservationAt: Long? = null
     private var observationMaxGapMs = 0L
     private var userReportedWrongAudio = false
+    private var routingFailureObserved = false
     private var lastAudioHealth: String? = null
     private var audioHealthSince = 0L
     private var mismatchSamples = 0
@@ -252,6 +254,7 @@ class RouterInCallService :
         lastCallObservationAt = null
         observationMaxGapMs = 0
         userReportedWrongAudio = false
+        routingFailureObserved = false
         resetAudioHealth()
         policy = RoutingPolicy()
         sessionStarted = false
@@ -563,6 +566,7 @@ class RouterInCallService :
                     "max_observation_gap_ms" to observationMaxGapMs,
                     "final_hfp_sample_age_ms" to hfp.sampledAt?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0) },
                     "observation_mode" to "SAMPLED_NOT_CONTINUOUS",
+                    "routing_failure_observed" to routingFailureObserved,
                     "user_reported_wrong_audio" to userReportedWrongAudio,
                     "physical_audio_verified" to false,
                 )
@@ -571,7 +575,9 @@ class RouterInCallService :
                     policy.phase.name,
                     policy.reasonCode.name,
                     when {
-                        userReportedWrongAudio || postConfirmationLossObserved -> "TARGET_HFP_AUDIO_UNSTABLE"
+                        userReportedWrongAudio -> "USER_REPORTED_WRONG_AUDIO"
+                        routingFailureObserved -> "ROUTING_FAILED"
+                        postConfirmationLossObserved -> "TARGET_HFP_AUDIO_UNSTABLE"
                         postConfirmationObservationIncomplete -> "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE"
                         else -> confirmation.name
                     },
@@ -588,6 +594,7 @@ class RouterInCallService :
             lastCallObservationAt = null
             observationMaxGapMs = 0
             userReportedWrongAudio = false
+            routingFailureObserved = false
             resetAudioHealth()
             manualSession = false
             manualCooldownUntil = 0L
@@ -647,8 +654,10 @@ class RouterInCallService :
         router.updateCurrent(callEndpoint)
         lastEndpointId = callEndpoint.identifier.toString()
         val route = currentRoute()
+        val expectedReconciliation = callEndpoint.identifier.toString() == policy.pendingRecoveryEndpointKey
         val otherBluetoothChoice =
-            route == RoutingPolicy.Route.OTHER_BLUETOOTH &&
+            !expectedReconciliation &&
+                route == RoutingPolicy.Route.OTHER_BLUETOOTH &&
                 previousId != null &&
                 previousId != lastEndpointId &&
                 targetEndpoint().endpoint != null &&
@@ -775,12 +784,18 @@ class RouterInCallService :
                     )
             // A different pre-answer Bluetooth choice is also protected when no competing
             // device was configured. Same-current startup requests remain observational.
+            val observedOwner = if (hfp.known) hfp.audioConnected.singleOrNull() else null
+            val matchesObservedOwner =
+                observedOwner != null &&
+                    hfp.sampledAt?.let { now - it in 0..RoutingPolicy.MAX_HFP_SAMPLE_AGE_MS } == true &&
+                    endpointForAddress(observedOwner).endpoint?.identifier?.toString() == endpointId
             val distinctPreAnswerBluetoothRequest =
                 outgoingDialingPhase &&
                     callEndpoint.endpointType == CallEndpoint.TYPE_BLUETOOTH &&
                     router.current() != null &&
                     !matchesCurrent &&
-                    !matchesTarget
+                    !matchesTarget &&
+                    !matchesObservedOwner
             val protect = protectedRequest || distinctPreAnswerBluetoothRequest
             trace.event(
                 "EXTERNAL_REQUEST_DECISION",
@@ -791,6 +806,7 @@ class RouterInCallService :
                 "action" to if (protect) "PROTECT_POSSIBLE_MANUAL_CHOICE" else "OBSERVE_WITHOUT_REASSERTION",
                 "protected_type_or_device" to protectedRequest,
                 "distinct_pre_answer_bluetooth" to distinctPreAnswerBluetoothRequest,
+                "matches_observed_audio_owner" to matchesObservedOwner,
                 "pre_answer" to outgoingDialingPhase,
                 "automatic_requests" to totalAutomaticRequests,
                 "matches_current" to matchesCurrent,
@@ -876,8 +892,9 @@ class RouterInCallService :
                 RoutingPolicy.Phase.WAITING,
                 RoutingPolicy.Phase.VERIFYING,
                 RoutingPolicy.Phase.STABILIZING,
+                RoutingPolicy.Phase.RECOVERING_SELECTOR,
             ) &&
-            (policy.requests > 0 || policy.verified)
+            (policy.hasActed || policy.verified)
 
     /** Latch safety-relevant events before later callbacks can replace their state. */
     private fun suspendSessionFromEvent(
@@ -967,9 +984,10 @@ class RouterInCallService :
         )
     }
 
-    private fun competitorEndpoint(): AddressedTelecomRouter.Target {
-        val address = settings.competitorAddress?.uppercase()
-        return router.target(
+    private fun competitorEndpoint(): AddressedTelecomRouter.Target = endpointForAddress(settings.competitorAddress?.uppercase())
+
+    private fun endpointForAddress(address: String?): AddressedTelecomRouter.Target =
+        router.target(
             targetHfpConnected = address != null && hfp.known && address in hfp.connected,
             connectedHfpCount = if (hfp.known) hfp.connected.size else 0,
             liveTargetLabels = hfp.deviceLabels[address].orEmpty(),
@@ -981,7 +999,6 @@ class RouterInCallService :
                     .flatten()
                     .toSet(),
         )
-    }
 
     private fun hfpAudioOwner(
         targetAddress: String?,
@@ -1087,12 +1104,18 @@ class RouterInCallService :
                 else -> address in hfp.audioConnected
             }
         val competitorAddress = settings.competitorAddress?.uppercase()
+        // Reconcile only to the sole positively observed HFP owner, identified through live
+        // unique labels. No persisted priority, first-device fallback, or speaker bounce.
+        val recoveryAddress = if (hfp.known && hfpFresh) hfp.audioConnected.singleOrNull() else null
+        val recovery = endpointForAddress(recoveryAddress)
         val selectorRecoveryAvailable =
-            when {
-                competitorAddress == null -> false
-                !hfp.known || !hfpFresh -> null
-                hfp.audioConnected.size > 1 -> null
-                else -> competitorAddress in hfp.audioConnected && competitor.endpoint != null
+            if (!hfp.known || !hfpFresh || !hfp.labelsKnown) {
+                null
+            } else {
+                recoveryAddress != null &&
+                    recoveryAddress != address &&
+                    recovery.endpoint != null &&
+                    (competitorAddress == null || recoveryAddress == competitorAddress)
             }
         val audioState = if (live.isNotEmpty() && (projection == true || manualSession)) audioFramework.sample(now) else null
         if (audioState != null && audioState != lastAudioFrameworkState) {
@@ -1186,7 +1209,7 @@ class RouterInCallService :
                     if (state != lastPublished) {
                         lastPublished = state
                         RouterLog.event("STATUS", state.replace("\n", " | "))
-                        SessionBridge.publish(state)
+                        SessionBridge.publish(state, CallAudioStatus.UNCONFIRMED)
                     }
                     scheduleTick(lateBindDeadline, "late_bind_evidence")
                     return
@@ -1214,6 +1237,9 @@ class RouterInCallService :
                         targetAvailable = endpointAvailable,
                         endpointRevision = router.endpointRevision(),
                         route = route,
+                        recoveryEndpointKey = if (selectorRecoveryAvailable == true) recovery.endpoint?.identifier?.toString() else null,
+                        recoveryEndpointCurrent = selectorRecoveryAvailable == true && router.isCurrent(recovery.endpoint),
+                        allowTargetAfterReconciliation = true,
                     ),
                 )
             }
@@ -1387,7 +1413,15 @@ class RouterInCallService :
             trace.event("DIAGNOSTIC_INCIDENT", "trigger" to policy.reasonCode, "route" to route, "hfp_fresh" to hfpFresh)
         }
         previousPolicyForIncident = policyState
-        if (decision.requestTarget && target.endpoint != null && (manualSession || totalAutomaticRequests < 1)) {
+        if (decision.requestTarget && target.endpoint != null && (manualSession || totalAutomaticRequests < 2)) {
+            if (decision.requestAttempt == 2) {
+                trace.event(
+                    "RECONCILIATION_CONFIRMED",
+                    "route" to route,
+                    "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
+                    "endpoint_revision" to router.endpointRevision(),
+                )
+            }
             if (!manualSession) totalAutomaticRequests++
             val attempt = requireNotNull(decision.requestAttempt)
             val targetId = RouterLog.deviceId(address)
@@ -1510,25 +1544,27 @@ class RouterInCallService :
                 trace.event("REQUEST_ERROR", "attempt" to attempt, "type" to e.javaClass.simpleName)
             }
         }
-        if (decision.restoreSelector && competitor.endpoint != null) {
-            val competitorId = RouterLog.deviceId(competitorAddress)
+        if (decision.restoreSelector && selectorRecoveryAvailable == true && recovery.endpoint != null) {
+            val competitorId = RouterLog.deviceId(recoveryAddress)
             try {
                 RouterLog.event(
                     "SELECTOR_RECOVERY_REQUEST",
-                    "target=$competitorId; backend=Telecom.requestCallEndpointChange; basis=${competitor.basis}",
+                    "target=$competitorId; backend=Telecom.requestCallEndpointChange; basis=${recovery.basis}",
                 )
                 trace.event(
                     "SELECTOR_RECOVERY_SUBMITTED",
                     "target" to competitorId,
-                    "basis" to competitor.basis,
+                    "purpose" to "RECONCILE_THEN_TARGET_ONCE",
+                    "owner_source" to if (competitorAddress == null) "SOLE_OBSERVED_HFP_OWNER" else "CONFIGURED_COMPETITOR",
+                    "basis" to recovery.basis,
                     "displayed_route" to route,
                     "target_sco" to targetHfpAudio,
-                    "competitor_sco" to true,
+                    "recovery_owner_sco" to true,
                     "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
                     "endpoint_revision" to router.endpointRevision(),
                 )
                 router.request(
-                    competitor.endpoint,
+                    recovery.endpoint,
                     started = { ticket ->
                         trace.event(
                             "SELECTOR_RECOVERY_CONTEXT",
@@ -1607,8 +1643,20 @@ class RouterInCallService :
         }
         if (route == RoutingPolicy.Route.TARGET) trace.confirmTelecom()
         if (policy.verified) trace.confirmTargetHfpAudio()
+        if (policy.phase == RoutingPolicy.Phase.FAILED && policy.requests > 0) routingFailureObserved = true
+        val audioStatus =
+            CallAudioStatus.assess(
+                hasCall = live.isNotEmpty(),
+                active = active,
+                userReportedProblem = userReportedWrongAudio,
+                fresh = hfp.known && hfpFresh,
+                ownerCount = hfp.audioConnected.size,
+                targetAudio = targetHfpAudio,
+                route = route,
+            )
         val state =
             listOf(
+                "Call audio: $audioStatus (sampled; physical speaker/microphone not verified)",
                 "Service: bound",
                 "Projection: ${projection ?: "unknown"}",
                 "Call: ${if (active) "ACTIVE" else "not active"}; live=${live.size}",
@@ -1626,10 +1674,10 @@ class RouterInCallService :
                     "UNKNOWN"
                 }}; Selected device confirmed=${policy.verified && targetHfpAudio == true}",
                 "Selector recovery: ${when {
-                    competitorAddress == null -> "unavailable: competing device not configured"
+                    selectorRecoveryAvailable == true -> "available: sole observed audio owner resolved"
+                    competitorAddress == null -> "waiting for a uniquely identified audio owner"
                     competitor.endpoint == null -> "unavailable: competing endpoint unresolved"
                     !hfpFresh -> "waiting for fresh HFP evidence"
-                    selectorRecoveryAvailable == true -> "ready: competing device owns audio"
                     else -> "not applicable to current audio owner"
                 }}",
                 "Audio framework: mode=${audioState?.mode ?: "unknown"}; " +
@@ -1649,7 +1697,7 @@ class RouterInCallService :
         if (state != lastPublished) {
             lastPublished = state
             RouterLog.event("STATUS", state.replace("\n", " | "))
-            SessionBridge.publish(state)
+            SessionBridge.publish(state, audioStatus)
         }
         if (policy.phase !in setOf(RoutingPolicy.Phase.SUSPENDED, RoutingPolicy.Phase.FAILED)) {
             decision.wakeAt?.let { deadline ->
@@ -1714,7 +1762,7 @@ class RouterInCallService :
         suspectedAudioLossAt = null
         suspectedAudioLossSampleAt = null
         manualCooldownUntil = now + 1_500
-        RouterLog.event("MANUAL_TEST", "One request only; projection gate bypassed explicitly")
+        RouterLog.event("MANUAL_TEST", "Bounded transaction; projection gate bypassed explicitly")
         evaluate()
     }
 
@@ -1753,6 +1801,12 @@ class RouterInCallService :
     private fun stopObservers() {
         if (disposed) return
         disposed = true
+        val stoppedAudioStatus =
+            when {
+                records.isEmpty() -> CallAudioStatus.NO_CALL
+                userReportedWrongAudio -> CallAudioStatus.USER_REPORTED_PROBLEM
+                else -> CallAudioStatus.UNCONFIRMED
+            }
         cancelTick("service_stopped")
         finishPostConfirmationWatch("service_stopped")
         val confirmation =
@@ -1764,6 +1818,7 @@ class RouterInCallService :
                 "last_sampled_audio_health" to lastAudioHealth,
                 "telecom_hfp_mismatch_samples" to mismatchSamples,
                 "first_mismatch_after_answer_ms" to firstMismatchAfterAnswerMs,
+                "routing_failure_observed" to routingFailureObserved,
                 "user_reported_wrong_audio" to userReportedWrongAudio,
                 "physical_audio_verified" to false,
             )
@@ -1771,7 +1826,12 @@ class RouterInCallService :
             settings.recordLastSession(
                 policy.phase.name,
                 policy.reasonCode.name,
-                "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE",
+                when {
+                    userReportedWrongAudio -> "USER_REPORTED_WRONG_AUDIO"
+                    routingFailureObserved -> "ROUTING_FAILED"
+                    postConfirmationLossObserved -> "TARGET_HFP_AUDIO_UNSTABLE"
+                    else -> "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE"
+                },
             )
         }
         router.clearSession()
@@ -1785,7 +1845,7 @@ class RouterInCallService :
         hfp.close()
         settings.prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
         if (SessionBridge.controller?.get() === this) SessionBridge.controller = null
-        SessionBridge.publish("No Telecom service bound. This is normal between calls.")
+        SessionBridge.publish("No Telecom service bound. This is normal between calls.", stoppedAudioStatus)
     }
 
     override fun onDestroy() {
