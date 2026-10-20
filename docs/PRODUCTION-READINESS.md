@@ -45,8 +45,8 @@
   are latched even when callbacks coalesce, while a pre-snapshot car Bluetooth route remains
   unresolved instead of being misclassified as a user override.
 - Requests are generation-tokened. Timeout alone does not trigger a retry. A stable observed-owner
-  mismatch permits one reconciliation followed by one target retry only after endpoint and fresh
-  HFP evidence agree. The transaction budget is two target requests and one reconciliation.
+  mismatch requires reconciliation before the single target request, after endpoint and fresh
+  HFP evidence agree. The transaction budget is one target request and at most one preceding reconciliation.
 - API 37 request markers are call-generation-bound and expire; late result callbacks are ignored.
   Startup-request replays are classified separately, while a later external request suppresses
   selector recovery. The diagnostic analyzer flags route oscillation and post-confirmation audio loss.
@@ -76,4 +76,4 @@
 
 ## Stability rule
 
-Automatic routing begins only after answer, for both incoming and outgoing calls. A persistent selected-endpoint/audio mismatch can authorize one reconcile-and-retry sequence, subject to fresh sole-owner identity, stable ownership, endpoint confirmation, current call eligibility and a fixed deadline. The whole automatic call budget is two target requests and one reconciliation. Optional competitor configuration narrows the allowed recovery owner. Unknown evidence cannot authorize a command; changed ownership and observed external control stop recovery. Request acceptance is not audio confirmation. See [the research, changed safety boundary and tests](ROUTING-RELIABILITY-2026-10-20.md).
+Automatic routing begins only after answer, for both incoming and outgoing calls. A persistent selected-endpoint/audio mismatch can authorize reconciliation before the single target request, subject to fresh sole-owner identity, stable ownership, endpoint confirmation, current call eligibility and a fixed deadline. The whole automatic call budget is one target request and at most one preceding reconciliation. Optional competitor configuration narrows the allowed recovery owner. Unknown evidence cannot authorize a command; changed ownership and observed external control stop recovery. Request acceptance is not audio confirmation. See [the research, changed safety boundary and tests](ROUTING-RELIABILITY-2026-10-20.md).

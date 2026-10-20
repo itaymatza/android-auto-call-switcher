@@ -60,11 +60,12 @@ object PolicyCases {
                 check(waiting.wakeAt == 500L)
                 check(p.evaluate(snapshot(500)).requestTarget)
             },
-            "displayed selected device with Android Auto SCO still forces request" to {
+            "displayed target with unresolved audio mismatch waits without a no-op request" to {
                 val p = policy()
                 val decision = p.evaluate(snapshot(0, route = Route.TARGET, targetHfpAudio = false))
-                check(decision.requestTarget)
-                check(p.requests == 1)
+                check(!decision.requestTarget)
+                check(p.requests == 0)
+                check(p.reasonCode == ReasonCode.WAITING_RECONCILIATION_EVIDENCE)
             },
             "only actual selected device HFP audio can verify success" to {
                 val p = policy(stableMs = 100)
@@ -96,100 +97,18 @@ object PolicyCases {
                 check(p.phase == Phase.FAILED)
                 check(p.reasonCode == ReasonCode.TARGET_AUDIO_NOT_CONFIRMED)
             },
-            "split-brain failure restores the manual selector for the selected call device once" to {
-                val p = policy(actionWindowMs = 4_000)
-                check(p.evaluate(snapshot(0, route = Route.TARGET)).requestTarget)
-                val recovery =
-                    p.evaluate(
-                        snapshot(
-                            4_000,
-                            route = Route.TARGET,
-                            targetHfpAudio = false,
-                            selectorRecoveryAvailable = true,
-                        ),
-                    )
-                check(recovery.restoreSelector)
-                check(!recovery.requestTarget)
-                check(p.requests == 1)
-                check(p.selectorRecoveries == 1)
+            "reconciliation callbacks outside a transaction are ignored" to {
+                val p = policy()
                 p.selectorRecoverySucceeded()
-                check(p.reasonCode == ReasonCode.SELECTOR_RECOVERY_ACCEPTED)
-                p.evaluate(snapshot(4_100, route = Route.COMPETING_DEVICE, selectorRecoveryAvailable = true))
+                p.selectorRecoveryFailed()
+                check(p.phase == Phase.WAITING)
+            },
+            "a failed target request never starts a new reconciliation" to {
+                val p = policy()
+                check(p.evaluate(snapshot(0)).requestTarget)
+                check(!p.evaluate(snapshot(4_000, route = Route.TARGET, selectorRecoveryAvailable = true)).restoreSelector)
                 check(p.phase == Phase.FAILED)
-                check(p.reasonCode == ReasonCode.SELECTOR_RECOVERY_CONFIRMED)
-            },
-            "selector recovery never guesses or loops" to {
-                listOf(
-                    snapshot(4_000, route = Route.COMPETING_DEVICE, selectorRecoveryAvailable = true),
-                    snapshot(4_000, route = Route.TARGET, selectorRecoveryAvailable = false),
-                    snapshot(4_000, route = Route.TARGET, selectorRecoveryAvailable = null),
-                ).forEach { finalSnapshot ->
-                    val p = policy(actionWindowMs = 4_000)
-                    p.evaluate(snapshot(0))
-                    check(!p.evaluate(finalSnapshot).restoreSelector)
-                    check(p.phase == Phase.FAILED)
-                    check(p.selectorRecoveries == 0)
-                }
-
-                val timeout = policy(actionWindowMs = 4_000)
-                timeout.evaluate(snapshot(0, route = Route.TARGET))
-                check(
-                    timeout.evaluate(snapshot(4_000, route = Route.TARGET, selectorRecoveryAvailable = true)).restoreSelector,
-                )
-                check(!timeout.evaluate(snapshot(6_500, route = Route.TARGET, selectorRecoveryAvailable = true)).restoreSelector)
-                check(timeout.reasonCode == ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED)
-                check(timeout.selectorRecoveries == 1)
-
-                val rejected = policy(actionWindowMs = 4_000)
-                rejected.evaluate(snapshot(0, route = Route.TARGET))
-                rejected.evaluate(snapshot(4_000, route = Route.TARGET, selectorRecoveryAvailable = true))
-                rejected.selectorRecoveryFailed()
-                check(rejected.reasonCode == ReasonCode.SELECTOR_RECOVERY_FAILED)
-                check(rejected.selectorRecoveries == 1)
-            },
-            "selector recovery callback races and accepted timeout are bounded" to {
-                val outsideRecovery = policy()
-                outsideRecovery.selectorRecoverySucceeded()
-                outsideRecovery.selectorRecoveryFailed()
-                check(outsideRecovery.phase == Phase.WAITING)
-
-                val accepted = policy(actionWindowMs = 4_000)
-                accepted.evaluate(snapshot(0, route = Route.TARGET))
-                val recovery =
-                    accepted.evaluate(
-                        snapshot(
-                            4_000,
-                            route = Route.TARGET,
-                            selectorRecoveryAvailable = true,
-                        ),
-                    )
-                accepted.selectorRecoverySucceeded()
-                val pending = accepted.evaluate(snapshot(5_000, route = Route.TARGET))
-                check(accepted.phase == Phase.RECOVERING_SELECTOR)
-                check(pending.wakeAt == recovery.wakeAt)
-                accepted.evaluate(snapshot(requireNotNull(recovery.wakeAt), route = Route.TARGET))
-                check(accepted.phase == Phase.FAILED)
-                check(accepted.reasonCode == ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED)
-                check(accepted.reason.contains("accepted"))
-            },
-            "protected user routes stop selector recovery" to {
-                listOf(Route.SPEAKER, Route.HANDSET, Route.WIRED, Route.OTHER_BLUETOOTH).forEach { route ->
-                    val p = policy(actionWindowMs = 4_000)
-                    p.evaluate(snapshot(0, route = Route.TARGET))
-                    val recovery =
-                        p.evaluate(
-                            snapshot(4_000, route = Route.TARGET, selectorRecoveryAvailable = true),
-                        )
-                    check(recovery.restoreSelector)
-                    p.selectorRecoverySucceeded()
-                    val decision = p.evaluate(snapshot(4_100, route = route))
-                    check(!decision.requestTarget)
-                    check(!decision.restoreSelector)
-                    check(p.phase == Phase.SUSPENDED)
-                    check(p.reasonCode == ReasonCode.USER_OVERRIDE)
-                    check(p.requests == 1)
-                    check(p.selectorRecoveries == 1)
-                }
+                check(p.selectorRecoveries == 0)
             },
             "accepted Telecom request still needs selected device SCO" to {
                 val p = policy(actionWindowMs = 1_000)

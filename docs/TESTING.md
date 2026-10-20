@@ -163,8 +163,7 @@ but the trace also shows an endpoint oscillation such as the preferred device â†
 loss of confirmed the preferred device HFP audio (including the post-confirmation watch verdict). Endpoint-request
 callbacks are reported for diagnostics only because Android can emit them during call startup without
 a user action. A session cannot be `PASS` without a finish, exact target HFP audio confirmation, and
-no detected instability. `selector_recoveries` reports the bounded Samsung selector-restoration path;
-it remains a routing failure until a later manual selection of the preferred device produces exact target HFP audio.
+no detected instability. `selector_recoveries` reports reconciliation commands. Current builds reconcile a pre-existing mismatch before the single target request. Reconciliation confirmation alone never constitutes target HFP confirmation; the analyzer also understands older selector-restoration traces.
 The report separately marks `diagnostic_complete`, lists any missing request contexts, identifies a
 Telecom-target/other-HFP mismatch without assuming which device owns that HFP audio, and reports the final HFP owner and selector-recovery
 confirmation. Use `--require-diagnostics` when checking a capture outside the harness.
@@ -173,8 +172,7 @@ proof of the physical speaker or microphone: those require the parked-car observ
 
 For the reported Samsung selector regression, run `--scenario selector-recovery`. In addition to
 the standard speaker, microphone, and Android Auto observations, the harness records whether the
-Phone UI showed the preferred device while Android Auto actually owned audio, whether recovery made the UI truthful,
-whether the preferred device became selectable, and whether the final manual selection moved both speaker and mic.
+Phone UI initially showed the preferred device while another device owned audio, and whether the app completed the preferred speaker/microphone transition without a manual route change.
 
 After collecting multiple runs, summarize the entire batch with:
 

@@ -228,6 +228,32 @@ class TraceAnalyzerTest(unittest.TestCase):
         self.assertEqual(1, item.request_contexts)
         self.assertEqual(1, item.selector_recovery_contexts)
 
+    def test_reconciliation_confirmation_is_distinct_from_target_audio_confirmation(self):
+        for confirmed in (False, True):
+            content = (
+                line("abc", 1, 0, "SESSION_STARTED", "mode=automatic trigger=fresh_active_transition")
+                + line("abc", 2, 500, "SELECTOR_RECOVERY_SUBMITTED", "displayed_route=TARGET")
+                + line("abc", 3, 750, "RECONCILIATION_CONFIRMED", "route=COMPETING_DEVICE")
+                + line("abc", 4, 750, "REQUEST_SUBMITTED", "attempt=1")
+                + line("abc", 5, 800, "REQUEST_ACCEPTED")
+            )
+            if confirmed:
+                content += line("abc", 6, 1100, "TARGET_HFP_AUDIO_CONFIRMED")
+            content += line("abc", 7 if confirmed else 6, 5000, "SESSION_FINISHED",
+                            "phase=RELEASED reason=TARGET_AUDIO_CONFIRMED termination=call_removed" if confirmed
+                            else "phase=FAILED reason=TARGET_AUDIO_NOT_CONFIRMED termination=call_removed")
+            summaries, warnings = self.parse(content)
+            self.assertEqual([], warnings)
+            self.assertTrue(summaries[0].selector_recovery_confirmed)
+            self.assertEqual(confirmed, summaries[0].hfp_audio_confirmed)
+            self.assertEqual("PASS" if confirmed else "FAIL", summaries[0].status)
+
+    def test_exported_diagnostic_loss_cannot_silently_pass(self):
+        for field in ("file_write_failures_current_process", "dropped_file_writes_current_process"):
+            for count in ("0", "1", "unknown"):
+                _, warnings = trace.parse_lines([f"LOG_RETENTION {field}={count}; rotation_may_truncate_sessions=true"])
+                self.assertEqual(count != "0", bool(warnings))
+
     def test_diagnostic_gaps_do_not_reclassify_behavioral_result(self):
         content = (
             line("abc", 1, 0, "SESSION_STARTED", "mode=manual trigger=route_now")

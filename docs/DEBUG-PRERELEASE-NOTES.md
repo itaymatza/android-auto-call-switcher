@@ -27,12 +27,13 @@ to the workflow and source commit that produced it.
 
 ## What changed in beta.21
 
-- Addresses accepted target requests that do nothing because Telecom already displays that endpoint while another device owns HFP audio. After a persistent mismatch, reconcile Telecom with the sole stable observed owner, wait for endpoint confirmation, then request the target once more.
-- Caps a transaction at two target requests and one reconciliation. Unknown identity, stale/ambiguous audio, changed ownership, external requests and lost eligibility block recovery; no speaker bounce or repeating loop.
+- Addresses accepted target requests that do nothing because Telecom already displays that endpoint while another device owns HFP audio. Before making the single target request, reconcile Telecom with the sole stable observed owner and require endpoint confirmation plus a strictly newer matching HFP sample.
+- Caps a transaction at one target request and at most one preceding reconciliation; removes the failed-request/retry sequence. Unknown identity, stale/ambiguous audio, changed ownership, external requests and lost eligibility block recovery; no speaker bounce or repeating loop.
 - Recovery works without a configured competitor only when live identity resolves the sole observed owner uniquely. A configured competitor further restricts that owner.
 - Adds a prominent current call-audio indicator; preferred-device configuration and request acceptance never become audio confirmation. A user report overrides positive platform indicators.
-- Preserves known routing failures across disconnect, incomplete observation and service teardown, including offline analysis.
-- Adds independent Telecom/HFP transport simulations across callback order, transition delays, request echoes, competitor settings and persistent failure. See [research and verification](https://github.com/itaymatza/android-auto-call-switcher/blob/main/docs/ROUTING-RELIABILITY-2026-10-20.md).
+- Uses typed routing commands, one production policy for tests and the app, and one session-finalization path. Preserves failures across immediate pause, disconnect, incomplete observation and service teardown, including offline analysis.
+- Bounds diagnostic writes and exports dropped-write counts; saturated export requests report failure without blocking routing.
+- Adds 192 independent Telecom/HFP transport combinations and regressions for manual reconciliation without projection. Tests cover across callback order, transition delays, request echoes, competitor settings and persistent failure. See [research and verification](https://github.com/itaymatza/android-auto-call-switcher/blob/main/docs/ROUTING-RELIABILITY-2026-10-20.md).
 
 These changes are software-verified. Samsung/Android Auto physical speaker and microphone behavior still requires a new parked trial on this APK.
 

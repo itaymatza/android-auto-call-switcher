@@ -1,6 +1,6 @@
 # Android platform research and decision
 
-Research rechecked against Android developer documentation and AOSP in September 2026.
+Research rechecked against Android developer documentation, SDK 37.0 and AOSP on 2026-10-20. See the [fresh routing decision and alternatives](ROUTING-RELIABILITY-2026-10-20.md).
 
 ## Authorization findings
 
@@ -24,7 +24,7 @@ AOSP `InCallController` classifies a non-UI service only when it has `CONTROL_IN
 - The request outcome reports acceptance or an error. The final route is verified only by `onCallEndpointChanged()`.
 - `CallEndpoint` exposes a human-readable name, type, and UUID, but no Bluetooth hardware address. AOSP keeps its UUID-to-address map internally. Public documentation does not promise that the UUID is a durable identifier suitable for persistence.
 - The implementation therefore persists the paired Bluetooth identity locally, but resolves it anew against each live endpoint set. A unique endpoint-name match is accepted. A name mismatch is accepted only when exactly one HFP device and one Bluetooth endpoint exist. Duplicate or otherwise ambiguous endpoints fail closed.
-- API 37 `onCallEndpointRequested()` lets a non-UI service observe an endpoint request from another in-call service. It does not identify the requester or prove the final route. Call-start activity can extend the short settling window; an external request after the target attempt suppresses selector recovery, while target HFP audio observation continues.
+- API 37 `onCallEndpointRequested()` lets a non-UI service observe an endpoint request from another in-call service. It does not identify the requester or prove the final route. Call-start activity can extend the short settling window; an external request interrupts reconciliation. After the single target request, passive HFP observation continues without further commands.
 
 ## Alternatives rejected
 

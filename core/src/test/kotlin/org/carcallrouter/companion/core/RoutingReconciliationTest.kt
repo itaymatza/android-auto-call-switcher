@@ -28,53 +28,50 @@ class RoutingReconciliationTest {
             Route.TARGET,
             "observed-owner",
             false,
-            true,
         )
 
     private fun recovering(): RoutingPolicy {
         val policy = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
-        assertTrue(policy.evaluate(sample(0)).requestTarget)
-        policy.requestSucceeded(1, 2) // Android's same-endpoint success without an audio change.
-        for (time in 250L..3750L step 250) {
-            assertFalse(policy.evaluate(sample(time)).requestTarget)
+        for (time in listOf(0L, 250L)) {
+            assertEquals(null, policy.evaluate(sample(time)).command)
         }
-        assertTrue(policy.evaluate(sample(4000)).restoreSelector)
+        assertEquals(RoutingPolicy.Command.Reconcile("observed-owner"), policy.evaluate(sample(500)).command)
+        assertEquals(0, policy.requests)
+        assertTrue(policy.hasUnfinishedRequest)
         assertEquals("observed-owner", policy.pendingRecoveryEndpointKey)
         return policy
     }
 
-    @Test fun sameEndpointNoOpCanRecoverWithoutAnUnboundedRetry() {
+    @Test fun reconcilesBeforeTheSingleTargetRequestAvoidingSameEndpointNoOp() {
         val p = recovering()
         p.selectorRecoverySucceeded()
-        assertFalse(p.evaluate(sample(4100)).requestTarget) // acceptance is insufficient
-        val retry = p.evaluate(sample(4200).copy(recoveryEndpointCurrent = true, route = Route.OTHER_BLUETOOTH))
-        assertTrue(retry.requestTarget)
-        assertEquals(2, retry.requestAttempt)
-        p.requestSucceeded(1, 4201) // delayed old outcome must not complete attempt 2
-        p.requestSucceeded(2, 4210)
-        p.evaluate(sample(4250).copy(targetHfpAudio = true, selectorRecoveryAvailable = false))
-        p.evaluate(sample(4500).copy(targetHfpAudio = true, selectorRecoveryAvailable = false))
+        assertFalse(p.evaluate(sample(600)).requestTarget) // acceptance is insufficient
+        val request = p.evaluate(sample(700).copy(recoveryEndpointCurrent = true, route = Route.OTHER_BLUETOOTH))
+        assertEquals(RoutingPolicy.Command.Target(1), request.command)
+        p.selectorRecoveryFailed() // late reconciliation outcome cannot end the target transaction
+        p.requestSucceeded(2, 701) // stale/foreign target attempt cannot complete it either
+        p.requestSucceeded(1, 710)
+        p.evaluate(sample(750).copy(targetHfpAudio = true, selectorRecoveryAvailable = false))
+        p.evaluate(sample(1000).copy(targetHfpAudio = true, selectorRecoveryAvailable = false))
         assertTrue(p.verified)
         assertEquals(Phase.RELEASED, p.phase)
-        assertEquals(2, p.requests)
+        assertEquals(1, p.requests)
         assertEquals(1, p.selectorRecoveries)
-        assertFalse(p.evaluate(sample(20000)).requestTarget)
+        assertFalse(p.hasUnfinishedRequest)
+        assertEquals(null, p.evaluate(sample(20000)).command)
     }
 
-    @Test fun recoveryCannotLoopWhenTheSecondTargetRequestAlsoFails() {
+    @Test fun targetFailureNeverStartsAnotherReconciliationOrRetry() {
         val p = recovering()
-        assertTrue(p.evaluate(sample(4100).copy(recoveryEndpointCurrent = true)).requestTarget)
-        for (t in 4350L..8100L step 250) {
-            val d = p.evaluate(sample(t))
-            assertFalse(d.requestTarget)
-            assertFalse(d.restoreSelector)
-        }
+        assertTrue(p.evaluate(sample(600).copy(recoveryEndpointCurrent = true)).requestTarget)
+        for (t in 850L..4600L step 250) assertEquals(null, p.evaluate(sample(t)).command)
         assertEquals(Phase.FAILED, p.phase)
         assertFalse(p.verified)
-        assertEquals(2, p.requests)
+        assertEquals(1, p.requests)
+        assertEquals(null, p.evaluate(sample(30000)).command)
     }
 
-    @Test fun interruptionsAtEveryRecoveryPhasePreventTheTargetRetry() {
+    @Test fun interruptionsAtEveryRecoveryPhasePreventTheTargetRequest() {
         val changes: List<(RoutingPolicy.Snapshot) -> RoutingPolicy.Snapshot> =
             listOf(
                 { it.copy(authorized = false) },
@@ -92,11 +89,10 @@ class RoutingReconciliationTest {
             )
         for (change in changes) {
             val p = recovering()
-            val d = p.evaluate(change(sample(4100).copy(recoveryEndpointCurrent = true)))
-            assertFalse(d.requestTarget)
-            assertFalse(p.evaluate(sample(4200).copy(recoveryEndpointCurrent = true)).requestTarget)
+            assertEquals(null, p.evaluate(change(sample(600).copy(recoveryEndpointCurrent = true))).command)
+            assertEquals(null, p.evaluate(sample(700).copy(recoveryEndpointCurrent = true)).command)
         }
-        for (at in listOf(4000L, 4100L, 5499L)) {
+        for (at in listOf(500L, 600L, 2999L)) {
             val p = recovering()
             assertTrue(p.observeExternalRequestAfterTarget())
             assertFalse(p.evaluate(sample(at).copy(recoveryEndpointCurrent = true)).requestTarget)
@@ -105,26 +101,28 @@ class RoutingReconciliationTest {
     }
 
     @Test fun unknownEvidenceCanWaitButCannotAuthorizeOrExtendRecovery() {
-        val p = recovering()
-        assertFalse(
-            p
-                .evaluate(
-                    sample(4100).copy(
-                        selectorRecoveryAvailable = null,
-                        recoveryEndpointKey = null,
-                        targetHfpConnected = null,
-                        targetHfpSampleAt = null,
-                    ),
-                ).requestTarget,
-        )
-        assertFalse(p.evaluate(sample(5500).copy(recoveryEndpointCurrent = true)).requestTarget)
-        assertEquals(Phase.FAILED, p.phase)
-        assertFalse(p.evaluate(sample(5600).copy(recoveryEndpointCurrent = true)).requestTarget)
+        for (projectionUnknown in listOf(false, true)) {
+            val p = recovering()
+            val unknown =
+                sample(600).copy(
+                    selectorRecoveryAvailable = null,
+                    recoveryEndpointKey = null,
+                    targetHfpConnected = null,
+                    targetHfpSampleAt = null,
+                    projection = if (projectionUnknown) null else true,
+                )
+            assertEquals(null, p.evaluate(unknown).command)
+            assertEquals(3000L, p.evaluate(unknown.copy(now = 2900)).wakeAt)
+            p.selectorRecoverySucceeded() // outcome may arrive while evidence is unknown
+            assertFalse(p.evaluate(unknown.copy(now = 3000)).requestTarget)
+            assertEquals(ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED, p.reasonCode)
+            assertFalse(p.evaluate(sample(3100).copy(recoveryEndpointCurrent = true)).requestTarget)
+        }
     }
 
     @Test fun recoveryDeadlineAndSampleFreshnessMatrix() {
         var cases = 0
-        for (now in listOf(4000L, 4001L, 4250L, 5499L, 5500L, 5600L)) {
+        for (now in listOf(500L, 501L, 750L, 2999L, 3000L, 3100L)) {
             for (age in listOf(-1L, 0L, 250L, 750L, 751L, 1500L)) {
                 for (current in listOf(false, true)) {
                     for (ownerKnown in listOf(false, true)) {
@@ -139,10 +137,10 @@ class RoutingReconciliationTest {
                                         selectorRecoveryAvailable = if (ownerKnown) true else null,
                                     ),
                                 )
-                            val eligible = current && ownerKnown && now < 5500 && age in 0..750 && now - age >= 4000
+                            val eligible = current && ownerKnown && now < 3000 && age in 0..750 && now - age > 500
                             assertEquals("now=$now age=$age current=$current owner=$ownerKnown", eligible, decision.requestTarget)
                             assertFalse(decision.restoreSelector)
-                            assertEquals(if (eligible) 2 else 1, p.requests)
+                            assertEquals(if (eligible) 1 else 0, p.requests)
                             cases++
                         }
                     }
@@ -152,23 +150,46 @@ class RoutingReconciliationTest {
         assertEquals(288, cases)
     }
 
-    @Test fun transientOrChangingOwnersCannotAuthorizeReconciliation() {
-        for (case in 0..4) {
+    @Test fun transientChangingStaleAndUnresolvedOwnersCannotAuthorizeACommand() {
+        for (case in 0..5) {
             val p = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
-            p.evaluate(sample(0))
-            for (t in 250L..3750L step 250) p.evaluate(sample(t))
-            val final =
+            assertEquals(null, p.evaluate(sample(0)).command)
+            p.evaluate(sample(250))
+            val changed =
                 when (case) {
-                    0 -> sample(4000).copy(recoveryEndpointKey = "new-owner")
-                    1 -> sample(4000).copy(selectorRecoveryAvailable = null)
-                    2 -> sample(4000).copy(targetHfpSampleAt = 0)
-                    3 -> sample(4000).copy(targetHfpAudio = null)
-                    else -> sample(4000).copy(recoveryEndpointKey = null)
+                    0 -> sample(500).copy(recoveryEndpointKey = "new-owner")
+                    1 -> sample(500).copy(selectorRecoveryAvailable = null)
+                    2 -> sample(1000).copy(targetHfpSampleAt = 0)
+                    3 -> sample(500).copy(targetHfpAudio = null)
+                    4 -> sample(500).copy(recoveryEndpointKey = null)
+                    else -> sample(1100) // missing observations break continuity
                 }
-            assertFalse(p.evaluate(final).restoreSelector)
+            assertEquals(null, p.evaluate(changed).command)
+            assertEquals(0, p.requests)
+            assertEquals(0, p.selectorRecoveries)
         }
         val p = recovering()
         p.selectorRecoveryFailed()
-        assertFalse(p.evaluate(sample(4100).copy(recoveryEndpointCurrent = true)).requestTarget)
+        assertFalse(p.evaluate(sample(600).copy(recoveryEndpointCurrent = true)).requestTarget)
+    }
+
+    @Test fun cachedOrRegressingSamplesCannotAccumulateOwnerStability() {
+        val p = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
+        for (now in listOf(0L, 250L, 500L, 750L)) {
+            assertEquals(null, p.evaluate(sample(now).copy(targetHfpSampleAt = 0)).command)
+        }
+        assertEquals(null, p.evaluate(sample(800).copy(targetHfpSampleAt = 400)).command)
+        assertEquals(null, p.evaluate(sample(850).copy(targetHfpSampleAt = 300)).command)
+        assertEquals(null, p.evaluate(sample(900).copy(targetHfpSampleAt = 750)).command)
+        assertTrue(p.evaluate(sample(1000)).restoreSelector)
+    }
+
+    @Test fun unresolvedDisplayedTargetExpiresWithoutSubmittingAnIdempotentRequest() {
+        val p = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
+        for (now in 0L..10000L step 250) {
+            assertEquals(null, p.evaluate(sample(now).copy(recoveryEndpointKey = null)).command)
+        }
+        assertEquals(ReasonCode.EVIDENCE_DEADLINE_EXPIRED, p.reasonCode)
+        assertFalse(p.hasActed)
     }
 }

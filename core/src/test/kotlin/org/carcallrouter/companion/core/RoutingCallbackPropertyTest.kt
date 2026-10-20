@@ -44,6 +44,8 @@ class RoutingCallbackPropertyTest {
                         targetAvailable = evidence(random),
                         endpointRevision = session.toLong() * 100 + it,
                         route = route,
+                        recoveryEndpointKey = if (random.nextInt(4) == 0) null else "owner",
+                        recoveryEndpointCurrent = route == Route.COMPETING_DEVICE,
                     )
                 val before = policy.phase
                 val decision = policy.evaluate(snapshot)
@@ -82,7 +84,7 @@ class RoutingCallbackPropertyTest {
                     check(snapshot.targetAvailable == true)
                     check(snapshot.targetHfpAudio == false)
                     check(snapshot.selectorRecoveryAvailable == true)
-                    check(policy.requests == 1)
+                    check(policy.requests == 0)
                     check(policy.selectorRecoveries == 1)
                     check(policy.phase == Phase.RECOVERING_SELECTOR)
                 }

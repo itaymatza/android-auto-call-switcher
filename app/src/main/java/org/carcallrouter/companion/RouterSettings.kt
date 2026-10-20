@@ -16,8 +16,8 @@ class RouterSettings(
             get() =
                 when {
                     confirmation in setOf("USER_REPORTED_WRONG_AUDIO", "ROUTING_FAILED") -> Result.FAILED
-                    confirmation == "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE" -> Result.INCOMPLETE
                     phase == "FAILED" -> Result.FAILED
+                    confirmation == "TARGET_HFP_AUDIO_OBSERVATION_INCOMPLETE" -> Result.INCOMPLETE
                     confirmation == "TARGET_HFP_AUDIO_UNSTABLE" -> Result.UNSTABLE
                     confirmation == "TARGET_HFP_AUDIO" &&
                         (phase == "RELEASED" || reason == "CALL_NOT_ACTIVE") -> Result.HFP_CONFIRMED

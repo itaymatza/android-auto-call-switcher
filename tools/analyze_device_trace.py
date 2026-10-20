@@ -89,6 +89,12 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[TraceEvent], list[str]]:
     events: list[TraceEvent] = []
     warnings: list[str] = []
     for line_number, raw in enumerate(lines, start=1):
+        if "LOG_RETENTION " in raw:
+            for token in raw.split("LOG_RETENTION ", 1)[1].split():
+                key, separator, value = token.rstrip(";").partition("=")
+                if separator and key in {"file_write_failures_current_process", "dropped_file_writes_current_process"}:
+                    if value != "0":
+                        warnings.append(f"line {line_number}: diagnostic retention reports {key}={value}")
         if MARKER not in raw:
             continue
         body = raw.split(MARKER, 1)[1].strip()
@@ -373,7 +379,7 @@ def summarize(events: Iterable[TraceEvent], excluded: set[str] | None = None) ->
             environment_captured=environment_captured,
             split_brain_observed=split_brain_observed,
             selector_recovery_confirmed=any(
-                event.event == "SELECTOR_RECOVERY_CONFIRMED" for event in session_events
+                event.event in {"SELECTOR_RECOVERY_CONFIRMED", "RECONCILIATION_CONFIRMED"} for event in session_events
             ),
             diagnostic_complete=not diagnostic_gaps,
             diagnostic_gaps=diagnostic_gaps,
