@@ -25,7 +25,18 @@ This pre-release makes the current Android Auto Call Switcher beta installable a
 The attached `.sha256` file verifies the APK bytes. The GitHub artifact attestation links the APK
 to the workflow and source commit that produced it.
 
-## What changed in beta.21
+## What changed in beta.22
+
+- Fixes the six regression cases demonstrated against beta.21 and a further status-expiry regression, covering interrupted evidence, coalesced callbacks, stale manual-call audio status and missed protected choices.
+- Expires displayed observations when their original query timestamp is stale, even if service polling stops.
+- Uses one sampled-evidence stability component for target confirmation and reconciliation; an unknown interval cannot be joined to an earlier positive sample.
+- Continues passive monitoring throughout manually routed calls without requiring Android Auto. Later observed changes update the status without issuing another route request.
+- Preserves incoming pre-answer protected route choices and newer choices made while a manual attempt waits for evidence.
+- Retains bounded Telecom requests and Samsung Phone. See the [fresh platform and implementation audit](https://github.com/itaymatza/android-auto-call-switcher/blob/main/docs/ROUTING-AUDIT-2026-10-21.md).
+
+Physical speaker/microphone reliability remains unqualified until this APK is tested on the phone and car.
+
+## Earlier beta.21 behavior
 
 - Addresses accepted target requests that do nothing because Telecom already displays that endpoint while another device owns HFP audio. Before making the single target request, reconcile Telecom with the sole stable observed owner and require endpoint confirmation plus a strictly newer matching HFP sample.
 - Caps a transaction at one target request and at most one preceding reconciliation; removes the failed-request/retry sequence. Unknown identity, stale/ambiguous audio, changed ownership, external requests and lost eligibility block recovery; no speaker bounce or repeating loop.

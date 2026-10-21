@@ -1855,7 +1855,7 @@ fun main(args: Array<String>) {
             },
         )
 
-    val tests = reconciliationSimulations() + baseTests
+    val tests = evidenceOwnershipRegressions() + protectedChoiceRegressions() + reconciliationSimulations() + baseTests
     val failed = mutableListOf<String>()
     val output = mutableListOf<String>()
     for ((name, test) in tests) {
@@ -2085,3 +2085,166 @@ private fun reconciliationSimulations(): List<Pair<String, () -> Unit>> {
     }
     return cases
 }
+
+private fun evidenceOwnershipRegressions(): List<Pair<String, () -> Unit>> =
+    listOf(
+        "sampled_status_uses_query_age_and_preserves_user_reports" to {
+            reset()
+            for (status in listOf(
+                CallAudioStatus.TARGET_OBSERVED,
+                CallAudioStatus.MISMATCH,
+                CallAudioStatus.OTHER_DEVICE,
+                CallAudioStatus.NO_BLUETOOTH_AUDIO,
+            )) {
+                TestQueue.now = 1000
+                for (sampledAt in listOf(null, 1001L, 0L)) {
+                    SessionBridge.publish("sample", status, sampledAt)
+                    check(SessionBridge.audioStatus == CallAudioStatus.UNCONFIRMED)
+                }
+                SessionBridge.publish("sample", status, 1000)
+                check(SessionBridge.audioStatus == status)
+                TestQueue.now = 1750
+                check(SessionBridge.audioStatus == status)
+                TestQueue.now = 1751
+                check(SessionBridge.audioStatus == CallAudioStatus.UNCONFIRMED)
+                SessionBridge.publish("sample", status, 1000)
+                check(SessionBridge.audioStatus == CallAudioStatus.UNCONFIRMED)
+            }
+            SessionBridge.publish("reported", CallAudioStatus.USER_REPORTED_PROBLEM, 0)
+            check(SessionBridge.audioStatus == CallAudioStatus.USER_REPORTED_PROBLEM)
+            SessionBridge.publish("ended")
+            check(SessionBridge.audioStatus == CallAudioStatus.NO_CALL)
+        },
+        "audio_status_expires_when_permission_loss_stops_observation" to {
+            Fixture().use { f ->
+                f.activateAndSettle()
+                f.route(target)
+                f.targetAudio(true)
+                advanceSampledTo(5000)
+                check(SessionBridge.audioStatus == CallAudioStatus.TARGET_OBSERVED)
+                Access.runtime = false
+                f.endpoints(listOf(target, competing, other))
+                // No further service observations; reading the UI model must age the evidence.
+                advanceSampledTo(6500)
+                check(SessionBridge.audioStatus == CallAudioStatus.UNCONFIRMED) { SessionBridge.status }
+                countEquals(f, 1)
+            }
+        },
+        "coalesced_unknown_audio_edge_breaks_confirmation_history" to {
+            Fixture().use { f ->
+                f.activateAndSettle()
+                f.route(target)
+                f.targetAudio(true)
+                // Deliver both monitor callbacks before the queued reducer evaluation.
+                TestQueue.now += 250
+                HfpMonitor.emit(HfpMonitor.devices, known = false)
+                HfpMonitor.emit(HfpMonitor.devices, known = true)
+                f.flush()
+                check("reason=TARGET_AUDIO_CONFIRMED" !in SessionBridge.status) { SessionBridge.status }
+                advanceSampledTo(TestQueue.now + 300)
+                check("reason=TARGET_AUDIO_CONFIRMED" in SessionBridge.status)
+            }
+        },
+        "manual_observation_continues_after_confirmation_without_projection" to {
+            Fixture(enabled = false, projected = false).use { f ->
+                f.activateWithoutSettling()
+                f.service.routeNow()
+                f.route(target)
+                f.targetAudio(true)
+                advanceSampledTo(5000)
+                check(SessionBridge.audioStatus == CallAudioStatus.TARGET_OBSERVED)
+                // No Android broadcast: the next passive query must discover the changed owner.
+                HfpMonitor.audioDevices = setOf(COMPETING)
+                advanceSampledTo(6500)
+                check(SessionBridge.audioStatus == CallAudioStatus.MISMATCH) { SessionBridge.status }
+                countEquals(f, 1)
+            }
+        },
+        "later_manual_route_cancels_a_waiting_manual_transaction" to {
+            Fixture(enabled = false, projected = false).use { f ->
+                f.activateWithoutSettling()
+                HfpMonitor.isKnown = false
+                f.service.routeNow()
+                countEquals(f, 0)
+                f.route(speaker)
+                HfpMonitor.emit(HfpMonitor.devices, known = true)
+                f.flush()
+                advanceSampledTo(1500)
+                countEquals(f, 0)
+                check("USER_OVERRIDE" in SessionBridge.status)
+            }
+        },
+        "incoming_pre_answer_speaker_choice_is_preserved" to {
+            Fixture().use { f ->
+                f.route(speaker)
+                f.activateAndSettle()
+                countEquals(f, 0)
+                check("USER_OVERRIDE" in SessionBridge.status)
+            }
+        },
+    )
+
+private fun protectedChoiceRegressions(): List<Pair<String, () -> Unit>> =
+    buildList {
+        for (endpoint in listOf(speaker, handset, wired)) {
+            for (requestOnly in listOf(false, true)) {
+                for (manual in listOf(false, true)) {
+                    add(
+                        "protected_choice_type_${endpoint.endpointType}_request_${requestOnly}_manual_$manual" to {
+                            Fixture(enabled = !manual, projected = !manual).use { f ->
+                                if (manual) {
+                                    f.activateWithoutSettling()
+                                    HfpMonitor.isKnown = false
+                                    f.service.routeNow()
+                                }
+                                if (requestOnly) {
+                                    f.service.onCallEndpointRequested(endpoint)
+                                    f.flush()
+                                } else {
+                                    f.route(endpoint)
+                                }
+                                if (manual) {
+                                    HfpMonitor.emit(HfpMonitor.devices, known = true)
+                                    f.flush()
+                                } else {
+                                    f.activateWithoutSettling()
+                                }
+                                advanceSampledTo(1500)
+                                countEquals(f, 0)
+                                check("SUSPENDED" in SessionBridge.status)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        for (unknown in listOf(false, true)) {
+            add(
+                "coalesced_owner_edge_restarts_reconciliation_evidence_unknown_$unknown" to {
+                    Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+                        f.activateWithoutSettling()
+                        advanceSampledTo(400)
+                        countEquals(f, 0)
+                        TestQueue.now += 200
+                        if (unknown) {
+                            HfpMonitor.emit(HfpMonitor.devices, known = false)
+                        } else {
+                            HfpMonitor.audioDevices = setOf(OTHER)
+                            HfpMonitor.emit(HfpMonitor.devices)
+                        }
+                        HfpMonitor.audioDevices = setOf(COMPETING)
+                        HfpMonitor.emit(HfpMonitor.devices)
+                        f.flush()
+                        countEquals(f, 0)
+                        advanceSampledTo(TestQueue.now + 550)
+                        countEquals(f, 1)
+                        check(
+                            f.service.issuedRequests
+                                .single()
+                                .second == COMPETING_ID.toString(),
+                        )
+                    }
+                },
+            )
+        }
+    }

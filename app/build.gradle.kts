@@ -13,11 +13,11 @@ val configuredVersionCode =
     providers
         .gradleProperty("APP_VERSION_CODE")
         .map { it.toInt() }
-        .getOrElse(23)
+        .getOrElse(24)
 val configuredVersionName =
     providers
         .gradleProperty("APP_VERSION_NAME")
-        .orElse("0.3.0-beta.21")
+        .orElse("0.3.0-beta.22")
 val enableBetaSigning =
     providers
         .gradleProperty("ENABLE_BETA_SIGNING")

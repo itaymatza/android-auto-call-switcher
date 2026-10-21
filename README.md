@@ -63,7 +63,9 @@ the [compatibility guide](docs/DEVICE-COMPATIBILITY.md) and [FAQ](docs/FAQ.md) b
 
 ## Project status
 
-Earlier owner testing established that the Telecom approach can move a call to the preferred device, but recent calls exposed unreliable routing and misleading endpoint indications. Version `0.3.0-beta.21` addresses a specific failure: Telecom can accept a request for its already-selected endpoint without changing Bluetooth call audio.
+Earlier owner testing established that the Telecom approach can move a call to the preferred device, but recent calls exposed unreliable routing and misleading endpoint indications. The beta.21 redesign addresses a specific failure: Telecom can accept a request for its already-selected endpoint without changing Bluetooth call audio.
+
+Version `0.3.0-beta.22` fixes additional evidence-lifetime and manual-control defects found in a fresh audit: unknown observations break stability history, rapid callback edges cannot be erased, displayed audio evidence expires when stale, manual calls remain observed without projection, and newer protected route choices are preserved before answer and during a pending manual attempt. See the [fresh audit and regression evidence](docs/ROUTING-AUDIT-2026-10-21.md).
 
 The app waits until answer and the startup quiet window. If Telecom already displays the preferred device while another uniquely identified device owns HFP audio, it reconciles the displayed endpoint with that stable observed owner first, verifies the change, then makes the single preferred-device request. Ordinary transitions need only the preferred-device request. The budget is **one target request plus at most one preceding reconciliation**, with fresh eligibility and identity checks throughout. A request result alone never proves audio success.
 
@@ -90,13 +92,13 @@ The source namespace is the generic value `org.carcallrouter.companion`. Overrid
 ```sh
 bash gradlew \
   -PAPP_APPLICATION_ID=example.callroute \
-  -PAPP_VERSION_CODE=23 \
-  -PAPP_VERSION_NAME=0.3.0-beta.21 \
+  -PAPP_VERSION_CODE=24 \
+  -PAPP_VERSION_NAME=0.3.0-beta.22 \
   :app:assembleDebug
 ```
 
 
-`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `23`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.21`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
+`APP_APPLICATION_ID` defaults to `org.carcallrouter.companion`; `APP_VERSION_CODE` defaults to `24`; and `APP_VERSION_NAME` defaults to `0.3.0-beta.22`. Choose an application ID that you control before distributing a build. The source namespace remains generic and fixed so Kotlin and manifest class references stay consistent.
 
 
 ### Runtime configuration
@@ -122,7 +124,7 @@ account is not required just to download the APK.
 
 | Version | Channel | Downloads |
 | --- | --- | --- |
-| `0.3.0-beta.21` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
+| `0.3.0-beta.22` | Android 14+ debug beta | [Latest commit-specific APK, SHA-256, and verification report](https://github.com/itaymatza/android-auto-call-switcher/releases) |
 | `0.3.0-beta.10` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.10-debug) |
 | `0.3.0-beta.9` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.9-debug) |
 | `0.3.0-beta.7` | Previous Android 14+ debug beta | [Release](https://github.com/itaymatza/android-auto-call-switcher/releases/tag/v0.3.0-beta.7-debug) |
@@ -135,7 +137,7 @@ A new debug APK is published for each successful push to `main` on the [Releases
 
 The easiest path is the durable direct download:
 
-1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.21` debug pre-release.
+1. Open [GitHub Releases](https://github.com/itaymatza/android-auto-call-switcher/releases) and download the `.apk` from the newest `0.3.0-beta.22` debug pre-release.
 2. Open the downloaded APK on the Android device.
 3. If Android prompts you, temporarily allow **Install unknown apps** for the browser or file
    manager, install the APK, and then disable that permission again.

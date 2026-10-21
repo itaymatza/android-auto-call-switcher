@@ -1,0 +1,2 @@
+Version 0.3.0-beta.22
+Fix interrupted audio evidence and missed manual route choices. Keep manual-call audio status observed without Android Auto. Retain bounded routing and Samsung Phone. Physical speaker/microphone reliability still requires device qualification.

@@ -148,7 +148,7 @@ class RouterInCallService :
                             RoutingPolicy.Phase.RECOVERING_SELECTOR,
                         ) ||
                         (policy.phase == RoutingPolicy.Phase.RELEASED && postConfirmationDeadlineAt != null) ||
-                        (liveCalls().any { it.details.state == Call.STATE_ACTIVE } && projection == true)
+                        (liveCalls().any { it.details.state == Call.STATE_ACTIVE } && shouldObserveAudio())
                 )
             ) {
                 val previousSampleAt = hfp.sampledAt
@@ -313,6 +313,7 @@ class RouterInCallService :
             ProjectionMonitor(this) { value ->
                 val previous = projection
                 projection = value
+                if (value != true && !manualSession) policy.invalidateAudioEvidence()
                 if (trace.isActive() && value != previous) {
                     trace.event("PROJECTION_CHANGED", "active" to value, "previous" to previous)
                 }
@@ -338,6 +339,7 @@ class RouterInCallService :
     private fun newHfpMonitor(): HfpMonitor =
         HfpMonitor(this) {
             val audio = if (hfp.known) hfp.audioConnected else null
+            if (audio == null || audio != lastHfpAudioDevices) policy.invalidateAudioEvidence()
             if (audio != null && lastHfpAudioDevices != null && audio != lastHfpAudioDevices) {
                 val before = lastHfpAudioDevices?.size ?: 0
                 policy.observeStartupActivity(SystemClock.elapsedRealtime())
@@ -635,18 +637,20 @@ class RouterInCallService :
                 targetEndpoint().endpoint != null &&
                 (
                     outgoingDialingPhase ||
+                        manualSession ||
                         settings.competitorAddress != null ||
                         policy.requests > 0 ||
                         previousRoute == RoutingPolicy.Route.TARGET
                 )
         if (
-            sessionStarted &&
-            !manualSession &&
-            (outgoingDialingPhase || policy.phase !in RoutingPolicy.terminalPhases) &&
+            (
+                (sessionStarted && (outgoingDialingPhase || policy.phase !in RoutingPolicy.terminalPhases)) ||
+                    (!sessionStarted && records.isNotEmpty() && previousId != null && previousId != lastEndpointId)
+            ) &&
             (route in DEFINITE_USER_OWNED_ROUTES || otherBluetoothChoice)
         ) {
             suspendSessionFromEvent(
-                "Protected route observed during automatic routing; respecting possible user choice",
+                "Protected route observed; respecting the newer possible user choice",
                 RoutingPolicy.ReasonCode.USER_OVERRIDE,
             )
         }
@@ -739,7 +743,7 @@ class RouterInCallService :
         )
         // Call-start requests extend only the short quiet period. Once our request has been sent,
         // another service's request suppresses selector recovery, without stopping HFP verification.
-        if (observation.origin == AddressedTelecomRouter.RequestOrigin.EXTERNAL && sessionStarted) {
+        if (observation.origin == AddressedTelecomRouter.RequestOrigin.EXTERNAL && (sessionStarted || records.isNotEmpty())) {
             val protectedRequest =
                 callEndpoint.endpointType in
                     setOf(
@@ -1219,7 +1223,7 @@ class RouterInCallService :
                     ),
                 )
             }
-        if (active && projection == true && hfpStarted) {
+        if (active && shouldObserveAudio() && hfpStarted) {
             val sampledAt = hfp.sampledAt
             val evidenceKnown = hfp.known && hfpFresh
             if (lastAudioEvidenceKnown != evidenceKnown) {
@@ -1668,8 +1672,8 @@ class RouterInCallService :
         if (state != lastPublished) {
             lastPublished = state
             RouterLog.event("STATUS", state.replace("\n", " | "))
-            SessionBridge.publish(state, audioStatus)
         }
+        SessionBridge.publish(state, audioStatus, hfp.sampledAt)
         if (policy.phase !in setOf(RoutingPolicy.Phase.SUSPENDED, RoutingPolicy.Phase.FAILED)) {
             decision.wakeAt?.let { deadline ->
                 val sampleHfp =
@@ -1692,7 +1696,7 @@ class RouterInCallService :
                 }
             }
         }
-        if ((active || outgoingDialingPhase) && projection == true && hfpStarted && runtimeGranted) {
+        if ((active || outgoingDialingPhase) && shouldObserveAudio() && hfpStarted && runtimeGranted) {
             // Observation must keep running across a pending/expired authorization sample.
             // This timer only refreshes evidence; policy still requires fresh authorization
             // and call-safety checks before any request.
@@ -1700,6 +1704,9 @@ class RouterInCallService :
             if (scheduledTickAt == null || requireNotNull(scheduledTickAt) > desired) scheduleTick(desired, "CALL_OBSERVATION_POLL")
         }
     }
+
+    /** Observation belongs to the call lifetime, not the routing transaction's terminal phase. */
+    private fun shouldObserveAudio(): Boolean = projection == true || manualSession
 
     private fun finishPostConfirmationWatch(reason: String) {
         val deadline = postConfirmationDeadlineAt ?: return
