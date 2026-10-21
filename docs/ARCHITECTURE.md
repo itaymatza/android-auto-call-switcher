@@ -127,3 +127,13 @@ and its loss cannot turn an unidentified endpoint into a proven user/competitor 
 ## Fresh design review
 
 See [the October 20 source review and routing decision](ROUTING-RELIABILITY-2026-10-20.md) for alternatives, inferred identity limits, typed command ownership, deterministic transport tests and the outstanding physical qualification boundary.
+
+## Evidence lifetime and command lifetime
+
+`SampleStability` owns consecutive fresh-sample history for both target confirmation and alternative-owner reconciliation. The policy checks prerequisites through one boundary and clears history before returning for unavailable evidence. The service also invalidates it synchronously on unknown HFP, owner changes and lost projection evidence, before coalesced evaluation can hide an intervening edge.
+
+Passive call-audio observation is independent of the transaction phase. A manually initiated call transaction continues read-only polling without projection through completion or failure until the call ends. A later protected route choice stops further commands, including during incoming pre-answer observation; an already-submitted Android request cannot be recalled. Route-request correlation cannot establish human intent; exact attribution remains unavailable.
+
+See [the fresh audit](ROUTING-AUDIT-2026-10-21.md) for defect reproduction, source contracts and qualification limits.
+
+The UI bridge retains the query timestamp with its audio assessment and rechecks freshness on reads. Service publication updates this evidence even when the text has not changed. Cached observed statuses expire to UNCONFIRMED; they cannot be kept fresh by redraws or an old query being republished. User-reported problems retain their independent lifetime.

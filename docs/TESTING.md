@@ -282,3 +282,7 @@ audio qualification evidence.
 Coverage gates now also enforce at least 85% line / 65% branch coverage for production Bluetooth
 and projection monitors, and 90% line / 85% branch coverage for production call-safety and
 authorization monitors. Android boundary doubles are excluded from these measurements.
+
+## Fresh evidence and route ownership audit
+
+The beta.22 regressions first demonstrated two policy failures and four production-service failures on beta.21. An additional case demonstrated stale positive UI evidence after permission loss stopped polling. They cover interrupted target/owner history, coalesced monitor callbacks, incoming pre-answer choices, newer choices during pending manual routing, passive manual observation without projection, and timestamped UI evidence expiry. The protected-choice matrix exercises speaker/handset/wired endpoints through both request and route callbacks. These remain JVM/framework-double tests, not physical audio validation. See [the audit](ROUTING-AUDIT-2026-10-21.md).

@@ -62,4 +62,55 @@ class RoutingFreshnessTest {
         expired.evaluate(snapshot(10_000, 10_000, projection = false))
         assertTrue(expired.phase == Phase.FAILED)
     }
+
+    @Test
+    fun interruptedTargetObservationsRestartTheStabilityWindow() {
+        val gaps: List<(RoutingPolicy.Snapshot) -> RoutingPolicy.Snapshot> =
+            listOf(
+                { it.copy(targetHfpConnected = null) },
+                { it.copy(targetHfpConnected = false) },
+                { it.copy(authorized = null) },
+                { it.copy(callSafetyPending = true) },
+                { it.copy(projection = null) },
+                { it.copy(projection = false) },
+                { it.copy(targetHfpAudio = null) },
+            )
+        gaps.forEachIndexed { index, gap ->
+            val p = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
+            p.evaluate(snapshot(100, 100))
+            p.evaluate(gap(snapshot(200, 200)))
+            p.evaluate(snapshot(350, 350))
+            assertFalse("Interrupted evidence $index was counted as continuous target audio", p.verified)
+            p.evaluate(snapshot(600, 600))
+            assertTrue("Fresh continuous evidence $index should recover", p.verified)
+        }
+    }
+
+    @Test
+    fun interruptedOwnerObservationsCannotAuthorizeReconciliation() {
+        val gaps: List<(RoutingPolicy.Snapshot) -> RoutingPolicy.Snapshot> =
+            listOf(
+                { it.copy(targetHfpConnected = null) },
+                { it.copy(targetHfpConnected = false) },
+                { it.copy(authorized = null) },
+                { it.copy(callSafetyPending = true) },
+                { it.copy(projection = null) },
+                { it.copy(projection = false) },
+                { it.copy(targetHfpAudio = null) },
+            )
+
+        fun owner(at: Long) =
+            snapshot(at, at, audio = false).copy(
+                selectorRecoveryAvailable = true,
+                recoveryEndpointKey = "owner",
+            )
+        gaps.forEachIndexed { index, gap ->
+            val p = RoutingPolicy(settleDelayMs = 0).also { it.begin(0, Route.TARGET) }
+            p.evaluate(owner(0))
+            p.evaluate(owner(250))
+            p.evaluate(gap(owner(300)))
+            assertFalse("Interrupted evidence $index authorized reconciliation", p.evaluate(owner(500)).restoreSelector)
+            assertTrue("Fresh owner evidence $index should recover", p.evaluate(owner(1000)).restoreSelector)
+        }
+    }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0-beta.22
+
+- Centralize sampled-evidence stability; unknown prerequisites, stale samples and changed owners break history rather than accumulating false confidence.
+- Latch HFP/projection invalidations before coalesced evaluations can lose intervening callbacks.
+- Expire displayed audio observations using the original query timestamp, so stopped polling cannot preserve a stale positive status.
+- Keep passive call-audio observation running after manual routing without Android Auto, including failed and completed transactions.
+- Preserve incoming pre-answer protected choices and newer choices during a pending manual transaction.
+- Add regressions first demonstrated to fail against beta.21, plus protected-route callback and evidence-edge matrices.
+- Retain one target command, optional preceding reconciliation, existing authorization/safety gates and explicit physical-audio limits.
+
 ## 0.3.0-beta.21
 
 - Reconcile a pre-existing displayed-endpoint/HFP-owner mismatch before one target request, avoiding same-endpoint no-ops and automatic retries.
