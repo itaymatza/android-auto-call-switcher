@@ -7,3 +7,4 @@
 *.gif binary
 *.jks binary
 *.keystore binary
+*.jar binary

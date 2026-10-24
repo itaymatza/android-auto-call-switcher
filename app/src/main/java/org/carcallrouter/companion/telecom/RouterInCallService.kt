@@ -652,9 +652,10 @@ class RouterInCallService :
         // Protect explicit distinct requests separately in onCallEndpointRequested. Do not let
         // a TARGET -> other startup replay consume the first answered routing opportunity.
         val incomingStartup =
-            !sessionStarted && records.values.singleOrNull()?.let {
-                it.lastState == Call.STATE_RINGING && it.firstActiveAt == null
-            } == true
+            !sessionStarted &&
+                records.values.singleOrNull()?.let {
+                    it.lastState == Call.STATE_RINGING && it.firstActiveAt == null
+                } == true
         val otherBluetoothChoice =
             !incomingStartup &&
                 !expectedReconciliation &&
@@ -1422,21 +1423,18 @@ class RouterInCallService :
                 "reason" to policy.reasonCode,
                 "attempts" to policy.requests,
             )
-            when (policy.reasonCode) {
-                RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED,
-                RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_FAILED,
-                -> {
-                    trace.event(
-                        "SELECTOR_RECOVERY_TERMINATED",
-                        "reason" to policy.reasonCode,
-                        "route" to route,
-                        "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
-                    )
-                }
-
-                else -> {
-                    Unit
-                }
+            if (policy.reasonCode in
+                setOf(
+                    RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_NOT_CONFIRMED,
+                    RoutingPolicy.ReasonCode.SELECTOR_RECOVERY_FAILED,
+                )
+            ) {
+                trace.event(
+                    "SELECTOR_RECOVERY_TERMINATED",
+                    "reason" to policy.reasonCode,
+                    "route" to route,
+                    "hfp_audio_owner" to hfpAudioOwner(address, competitorAddress),
+                )
             }
         }
         if (trace.isActive() && policy.phase == RoutingPolicy.Phase.FAILED && policyState != previousPolicyForIncident) {
