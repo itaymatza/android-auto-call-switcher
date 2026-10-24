@@ -150,6 +150,64 @@ private fun countEquals(
 fun main(args: Array<String>) {
     val baseTests =
         listOf<Pair<String, () -> Unit>>(
+            "incoming_startup_bluetooth_replay_routes_once_after_answer" to {
+                for (configured in listOf(false, true)) {
+                    Fixture(initialEndpoint = target, configureCompetitor = configured).use { f ->
+                        f.route(competing)
+                        f.call.deliverState(Call.STATE_RINGING)
+                        f.flush()
+                        countEquals(f, 0)
+                        f.activateAndSettle()
+                        countEquals(f, 1)
+                        check(
+                            f.service.issuedRequests
+                                .single()
+                                .second == TARGET_ID.toString(),
+                        )
+                        check(RouterLog.events.any { "event=ACTIVE_ENTRY_DECISION" in it.second && "action=BEGIN_ROUTING" in it.second })
+                        check(
+                            RouterLog.events.any {
+                                "event=ENDPOINT_PROTECTION_DECISION" in it.second &&
+                                    "incoming_startup=true" in it.second
+                            },
+                        )
+                    }
+                }
+            },
+            "incoming_distinct_bluetooth_request_remains_protected_after_ringing_replay" to {
+                Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+                    f.service.onCallEndpointRequested(other)
+                    f.route(other)
+                    f.call.deliverState(Call.STATE_RINGING)
+                    f.flush()
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    check("EXTERNAL_ENDPOINT_REQUEST" in SessionBridge.status)
+                    check(RouterLog.events.any { "event=SUSPENSION_REASON_PRESERVED" in it.second })
+                    check(
+                        RouterLog.events.any { "event=ACTIVE_ENTRY_DECISION" in it.second && "action=KEEP_EXISTING_SESSION" in it.second },
+                    )
+                }
+            },
+            "incoming_observed_audio_owner_request_is_startup_not_manual_choice" to {
+                Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+                    f.service.onCallEndpointRequested(competing)
+                    f.route(competing)
+                    f.activateAndSettle()
+                    countEquals(f, 1)
+                }
+            },
+            "incoming_explicit_pause_survives_bluetooth_startup_and_answer" to {
+                Fixture(initialEndpoint = target, configureCompetitor = false).use { f ->
+                    f.service.pauseSession()
+                    f.route(competing)
+                    f.call.deliverState(Call.STATE_RINGING)
+                    f.flush()
+                    f.activateAndSettle()
+                    countEquals(f, 0)
+                    check("USER_PAUSED" in SessionBridge.status)
+                }
+            },
             "audio_health_distinguishes_endpoint_mismatch_from_missing_and_ambiguous_sco" to {
                 Fixture().use { f ->
                     f.activateAndSettle()

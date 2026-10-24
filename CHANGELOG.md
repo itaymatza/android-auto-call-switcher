@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Treat initial incoming Bluetooth endpoint changes as startup observations, allowing the first answered routing transaction to start. Distinct pre-answer requests to another device still protect a possible manual choice.
+- Log endpoint protection decisions and routing eligibility at answer, and retain the original suspension cause across repeated non-active callbacks.
+- Add deterministic incoming-call regressions for startup replay, observed audio-owner requests, distinct device requests and explicit pause. Physical device routing and picker attribution remain unverified.
+
 ## 0.3.0-beta.22
 
 - Centralize sampled-evidence stability; unknown prerequisites, stale samples and changed owners break history rather than accumulating false confidence.

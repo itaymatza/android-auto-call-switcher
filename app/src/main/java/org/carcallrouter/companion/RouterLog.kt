@@ -139,7 +139,12 @@ object RouterLog {
         writer: java.io.Writer,
         settings: RouterSettings,
     ) {
-        writer.append("\nDIAGNOSTIC_COVERAGE schema=4\n")
+        writer.append("\nDIAGNOSTIC_COVERAGE schema=5\n")
+        writer.append(
+            "Incoming startup: ENDPOINT_PROTECTION_DECISION records callback classification; " +
+                "ACTIVE_ENTRY_DECISION explains begin/keep-session at answer; " +
+                "SUSPENSION_DECISION and SUSPENSION_REASON_PRESERVED retain cancellation provenance.\n",
+        )
         writer.append(
             "Export-time configuration: enabled=${settings.enabled}; " +
                 "target=${deviceId(settings.targetAddress)}; competitor=${deviceId(settings.competitorAddress)}\n",
