@@ -471,6 +471,25 @@ class RouterInCallService :
         val previous = record.lastState
         record.lastState = state
         record.timeline.observe(stateName(state), SystemClock.elapsedRealtime())
+        if (state != previous && state == Call.STATE_ACTIVE) {
+            trace.event(
+                "ACTIVE_ENTRY_DECISION",
+                "previous_state" to stateName(previous),
+                "session_started" to sessionStarted,
+                "phase" to policy.phase,
+                "reason" to policy.reasonCode,
+                "saw_pre_active" to record.sawPreActive,
+                "previously_active" to (record.firstActiveAt != null),
+                "automatic_requests" to totalAutomaticRequests,
+                "action" to
+                    when {
+                        outgoingDialingPhase -> "ANSWER_VERIFICATION"
+                        sessionStarted -> "KEEP_EXISTING_SESSION"
+                        record.sawPreActive && previous != Call.STATE_HOLDING -> "BEGIN_ROUTING"
+                        else -> "NO_FRESH_TRANSITION"
+                    },
+            )
+        }
         if (state == Call.STATE_ACTIVE && record.firstActiveAt == null) record.firstActiveAt = SystemClock.elapsedRealtime()
         if (state != previous) captureCallBoundary(record, "state_changed")
         if (sessionStarted &&
@@ -629,8 +648,16 @@ class RouterInCallService :
         lastEndpointId = callEndpoint.identifier.toString()
         val route = currentRoute()
         val expectedReconciliation = callEndpoint.identifier.toString() == policy.pendingRecoveryEndpointKey
+        // Initial incoming Bluetooth callbacks describe platform setup, not proven user intent.
+        // Protect explicit distinct requests separately in onCallEndpointRequested. Do not let
+        // a TARGET -> other startup replay consume the first answered routing opportunity.
+        val incomingStartup =
+            !sessionStarted && records.values.singleOrNull()?.let {
+                it.lastState == Call.STATE_RINGING && it.firstActiveAt == null
+            } == true
         val otherBluetoothChoice =
-            !expectedReconciliation &&
+            !incomingStartup &&
+                !expectedReconciliation &&
                 route == RoutingPolicy.Route.OTHER_BLUETOOTH &&
                 previousId != null &&
                 previousId != lastEndpointId &&
@@ -642,6 +669,19 @@ class RouterInCallService :
                         policy.requests > 0 ||
                         previousRoute == RoutingPolicy.Route.TARGET
                 )
+        trace.event(
+            "ENDPOINT_PROTECTION_DECISION",
+            "incoming_startup" to incomingStartup,
+            "session_started" to sessionStarted,
+            "previous_route" to previousRoute,
+            "route" to route,
+            "expected_reconciliation" to expectedReconciliation,
+            "other_bluetooth_choice" to otherBluetoothChoice,
+            "protected_route_type" to (route in DEFINITE_USER_OWNED_ROUTES),
+            "user_intent" to "UNVERIFIED",
+            "phase" to policy.phase,
+            "reason" to policy.reasonCode,
+        )
         if (
             (
                 (sessionStarted && (outgoingDialingPhase || policy.phase !in RoutingPolicy.terminalPhases)) ||
@@ -765,8 +805,13 @@ class RouterInCallService :
                 observedOwner != null &&
                     hfp.sampledAt?.let { now - it in 0..RoutingPolicy.MAX_HFP_SAMPLE_AGE_MS } == true &&
                     endpointForAddress(observedOwner).endpoint?.identifier?.toString() == endpointId
+            val preAnswer =
+                outgoingDialingPhase ||
+                    records.values.singleOrNull()?.let {
+                        it.lastState == Call.STATE_RINGING && it.firstActiveAt == null
+                    } == true
             val distinctPreAnswerBluetoothRequest =
-                outgoingDialingPhase &&
+                preAnswer &&
                     callEndpoint.endpointType == CallEndpoint.TYPE_BLUETOOTH &&
                     router.current() != null &&
                     !matchesCurrent &&
@@ -783,7 +828,7 @@ class RouterInCallService :
                 "protected_type_or_device" to protectedRequest,
                 "distinct_pre_answer_bluetooth" to distinctPreAnswerBluetoothRequest,
                 "matches_observed_audio_owner" to matchesObservedOwner,
-                "pre_answer" to outgoingDialingPhase,
+                "pre_answer" to preAnswer,
                 "automatic_requests" to totalAutomaticRequests,
                 "matches_current" to matchesCurrent,
                 "matches_target" to matchesTarget,
@@ -881,6 +926,20 @@ class RouterInCallService :
         sessionStarted = true
         beginTrace("automatic", "safety_event")
         if (policy.phase == RoutingPolicy.Phase.SUSPENDED && policy.reasonCode == code) return
+        trace.event(
+            "SUSPENSION_DECISION",
+            "previous_phase" to policy.phase,
+            "previous_reason" to policy.reasonCode,
+            "new_reason" to code,
+            "automatic_requests" to totalAutomaticRequests,
+            "previously_active" to records.values.any { it.firstActiveAt != null },
+        )
+        // Retain the original cancellation cause across repeated ringing/details callbacks.
+        // Those callbacks must not disguise a protected choice as CALL_NOT_ACTIVE.
+        if (policy.phase == RoutingPolicy.Phase.SUSPENDED && code == RoutingPolicy.ReasonCode.CALL_NOT_ACTIVE) {
+            trace.event("SUSPENSION_REASON_PRESERVED", "reason" to policy.reasonCode, "ignored_reason" to code)
+            return
+        }
         policy.suspend(reason, code)
         cancelTick("session_suspended")
         RouterLog.event("SESSION_PAUSED_EVENT", reason)
